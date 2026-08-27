@@ -1,0 +1,295 @@
+@import url('https://fonts.googleapis.com/css2?family=ZCOOL+KuaiLe&family=Noto+Sans+SC:wght@300;400;500;700;900&display=swap');
+
+/* 本地字体 —— Card Characters（扑克牌字体） */
+@font-face {
+  font-family: 'Card Characters';
+  src: url('/fonts/CardCharacters.ttf') format('truetype');
+  font-weight: normal;
+  font-style: normal;
+  font-display: block;
+}
+
+/* 本地字体 —— JPQ（记牌器字体） */
+@font-face {
+  font-family: 'JPQ';
+  src: url('/fonts/JPQ.ttf') format('truetype');
+  font-weight: normal;
+  font-style: normal;
+  font-display: block;
+}
+
+/* 本地字体 —— Main（主界面字体） */
+@font-face {
+  font-family: 'Main';
+  src: url('/fonts/Main.ttf') format('truetype');
+  font-weight: normal;
+  font-style: normal;
+  font-display: block;
+}
+
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  font-family: "Noto Sans SC", system-ui, sans-serif;
+  line-height: 1.5;
+  font-weight: 400;
+  color-scheme: dark;
+  font-synthesis: none;
+  text-rendering: optimizeLegibility;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html, body, #root {
+  margin: 0;
+  padding: 0;
+  min-height: 100vh;
+  background: #0a0f1a;
+  color: #f8f4e8;
+  overflow-x: hidden;
+}
+
+/* 浅色模式全局覆盖 */
+.light {
+  color-scheme: light;
+}
+.light html, .light body, .light #root {
+  background: #f5ecd7;
+  color: #3d2e1a;
+}
+
+/* 滚动条 — 深色 */
+::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+::-webkit-scrollbar-track {
+  background: #0d1b2a;
+}
+::-webkit-scrollbar-thumb {
+  background: #1a3a5c;
+  border-radius: 4px;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: #d4af37;
+}
+
+/* 滚动条 — 浅色 */
+.light ::-webkit-scrollbar-track {
+  background: #e8dcc4;
+}
+.light ::-webkit-scrollbar-thumb {
+  background: #c4a96a;
+  border-radius: 4px;
+}
+.light ::-webkit-scrollbar-thumb:hover {
+  background: #b8941f;
+}
+
+/* ===== 全局按钮交互 =====
+   所有按钮统一 hover 提起 + active 按压反馈；
+   已有专属 hover 样式的按钮（.btn-gold/.btn-red 等）因其类选择器优先级更高，保留原效果 */
+button:not(:disabled) {
+  transition: transform 0.15s ease, box-shadow 0.15s ease, filter 0.15s ease, opacity 0.15s ease;
+}
+button:hover:not(:disabled) {
+  transform: translateY(-2px);
+  filter: brightness(1.08);
+}
+button:active:not(:disabled) {
+  transform: translateY(0) scale(0.97);
+  filter: brightness(0.95);
+}
+
+/* ===== 竖屏手机横置适配（PC/平板不受影响） ===== */
+/* 旋转容器：fixed 铺满屏幕，rotate(90deg) translateY(-100%) 恰好覆盖视口；
+   transform 使其后代的 position:fixed（弹窗/动画遮罩）以本容器为包含块，自动跟随旋转 */
+.ddz-rotate-root {
+  position: fixed;
+  top: 0;
+  left: 0;
+  transform-origin: top left;
+  transform: rotate(90deg) translateY(-100%);
+  overflow-y: auto;
+  overflow-x: hidden;
+  overscroll-behavior: contain;
+  -webkit-overflow-scrolling: touch;
+  background: #0d1b2a;
+}
+
+body.ddz-rotated {
+  overflow: hidden;
+  overscroll-behavior: none;
+  /* 禁用长按选择/呼出菜单，避免游戏触控被系统手势打断 */
+  -webkit-user-select: none;
+  user-select: none;
+  -webkit-touch-callout: none;
+}
+body.ddz-rotated #root {
+  min-height: 100% !important;
+  height: 100%;
+}
+body.ddz-rotated button {
+  touch-action: manipulation;
+}
+
+/* 旋转容器与缩放画布内，视口单位类以容器 100% 代替（vh/vw 仍指物理竖屏视口） */
+.ddz-rotate-root .min-h-screen,
+.ddz-fit .min-h-screen {
+  min-height: 100% !important;
+}
+.ddz-rotate-root .h-screen,
+.ddz-fit .h-screen {
+  height: 100% !important;
+}
+.ddz-rotate-root .w-screen,
+.ddz-fit .w-screen {
+  width: 100% !important;
+}
+
+@layer components {
+  /* 金色渐变文字 */
+  .text-gold-gradient {
+    background: linear-gradient(135deg, #f0d97a 0%, #d4af37 50%, #b8941f 100%);
+    -webkit-background-clip: text;
+    background-clip: text;
+    -webkit-text-fill-color: transparent;
+  }
+  .light .text-gold-gradient {
+    background: linear-gradient(135deg, #d4a017 0%, #b8860b 50%, #8b6914 100%);
+    -webkit-background-clip: text;
+    background-clip: text;
+    -webkit-text-fill-color: transparent;
+  }
+
+  /* 金色立体按钮 */
+  .btn-gold {
+    @apply relative inline-flex items-center justify-center gap-2 rounded-xl px-6 py-3 font-display text-lg
+           text-ink-900 transition-all duration-200;
+    background: linear-gradient(180deg, #f0d97a 0%, #d4af37 45%, #b8941f 100%);
+    border: 1px solid #f0d97a;
+    box-shadow: 0 4px 12px rgba(212,175,55,0.3), inset 0 1px 0 rgba(255,255,255,0.4);
+  }
+  .btn-gold:hover:not(:disabled) {
+    transform: translateY(-2px);
+    box-shadow: 0 8px 20px rgba(212,175,55,0.5), inset 0 1px 0 rgba(255,255,255,0.5);
+  }
+  .btn-gold:active:not(:disabled) {
+    transform: translateY(0);
+  }
+  .btn-gold:disabled {
+    @apply opacity-40 cursor-not-allowed;
+  }
+
+  /* 红色按钮 */
+  .btn-red {
+    @apply relative inline-flex items-center justify-center gap-2 rounded-xl px-6 py-3 font-display text-lg
+           text-ivory transition-all duration-200;
+    background: linear-gradient(180deg, #e63946 0%, #c8102e 50%, #a00d24 100%);
+    border: 1px solid #e63946;
+    box-shadow: 0 4px 12px rgba(200,16,46,0.3), inset 0 1px 0 rgba(255,255,255,0.2);
+  }
+  .btn-red:hover:not(:disabled) {
+    transform: translateY(-2px);
+    box-shadow: 0 8px 20px rgba(200,16,46,0.5);
+  }
+  .btn-red:disabled {
+    @apply opacity-40 cursor-not-allowed;
+  }
+
+  /* 幽灵按钮 */
+  .btn-ghost {
+    @apply inline-flex items-center justify-center gap-2 rounded-xl px-5 py-2.5 font-body text-base
+           text-gold-400 border border-gold-600/40 transition-all duration-200;
+    background: rgba(26,58,92,0.4);
+  }
+  .btn-ghost:hover:not(:disabled) {
+    @apply border-gold-500 text-gold-300;
+    background: rgba(212,175,55,0.1);
+  }
+  .btn-ghost:disabled {
+    @apply opacity-40 cursor-not-allowed;
+  }
+  /* 浅色模式幽灵按钮 */
+  .light .btn-ghost {
+    color: #8b6914;
+    border-color: rgba(139,105,20,0.35);
+    background: rgba(255,255,255,0.5);
+  }
+  .light .btn-ghost:hover:not(:disabled) {
+    color: #6b4f0f;
+    border-color: rgba(139,105,20,0.6);
+    background: rgba(212,175,55,0.15);
+  }
+
+  /* 玻璃拟态卡片 — 深色 */
+  .glass-panel {
+    background: rgba(19,41,61,0.6);
+    backdrop-filter: blur(12px);
+    border: 1px solid rgba(212,175,55,0.15);
+    border-radius: 16px;
+  }
+  /* 玻璃拟态卡片 — 浅色 */
+  .light .glass-panel {
+    background: rgba(255,250,235,0.85);
+    backdrop-filter: blur(12px);
+    border: 1px solid rgba(139,105,20,0.2);
+    box-shadow: 0 2px 12px rgba(0,0,0,0.08);
+  }
+
+  /* 牌桌呢绒纹理 — 深色 */
+  .felt-texture {
+    background:
+      radial-gradient(ellipse at center, #0f6048 0%, #0a4d3a 40%, #063326 100%);
+    position: relative;
+  }
+  .felt-texture::before {
+    content: '';
+    position: absolute;
+    inset: 0;
+    background-image:
+      repeating-linear-gradient(45deg, rgba(0,0,0,0.03) 0 2px, transparent 2px 4px),
+      repeating-linear-gradient(-45deg, rgba(255,255,255,0.02) 0 2px, transparent 2px 4px);
+    pointer-events: none;
+  }
+  /* 牌桌呢绒纹理 — 浅色 */
+  .light .felt-texture {
+    background:
+      radial-gradient(ellipse at center, #2d8a5e 0%, #1a7248 40%, #0f5a38 100%);
+  }
+  .light .felt-texture::before {
+    background-image:
+      repeating-linear-gradient(45deg, rgba(0,0,0,0.02) 0 2px, transparent 2px 4px),
+      repeating-linear-gradient(-45deg, rgba(255,255,255,0.03) 0 2px, transparent 2px 4px);
+  }
+}
+
+@layer utilities {
+  .text-shadow-gold {
+    text-shadow: 0 0 12px rgba(212,175,55,0.6), 0 2px 4px rgba(0,0,0,0.5);
+  }
+  .light .text-shadow-gold {
+    text-shadow: 0 1px 3px rgba(139,105,20,0.3), 0 2px 6px rgba(184,134,11,0.2);
+  }
+  .text-shadow-dark {
+    text-shadow: 0 2px 4px rgba(0,0,0,0.6);
+  }
+  .light .text-shadow-dark {
+    text-shadow: 0 1px 2px rgba(0,0,0,0.15);
+  }
+  /* 扑克牌牌面字体 */
+  .font-card {
+    font-family: 'Card Characters', 'Microsoft YaHei', 'PingFang SC', sans-serif;
+    font-weight: 700;
+  }
+  /* 记牌器/点数字符字体（大号点数牌面右下角） */
+  .font-jpq {
+    font-family: 'JPQ', 'Card Characters', 'Microsoft YaHei', 'PingFang SC', sans-serif;
+  }
+}
