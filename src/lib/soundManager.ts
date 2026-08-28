@@ -283,10 +283,18 @@ class SoundManager {
     this.randomVoice(seat, ['buyao1', 'buyao2', 'buyao3', 'buyao4']);
   }
 
-  /** 出牌：出牌音效 + 点数/牌型语音 + 组合特效 */
-  playCards(seat: number, play: Play): void {
+  /** 出牌：出牌音效 + 点数/牌型语音 + 组合特效
+   *  @param isFollow 是否为跟牌压制（压别人出的牌）：此时从牌型语音与压制语音（yapai1~3）中随机二选一 */
+  playCards(seat: number, play: Play, isFollow = false): void {
     // 出牌拍桌音效
     this.effect('chupai', 0.5);
+    // 压制（跟牌）：50% 概率播压制语音替代牌型语音；炸弹/王炸仍保留爆炸特效音
+    if (isFollow && Math.random() < 0.5) {
+      this.voice(seat, `yapai${1 + Math.floor(Math.random() * 3)}`);
+      if (play.type === 'bomb') this.effect('bomb', 0.8);
+      if (play.type === 'rocket') this.effect('longbomb', 0.8);
+      return;
+    }
     switch (play.type) {
       case 'single':
         this.voice(seat, `${singleVoiceIndex(play.mainRank)}`);
@@ -336,6 +344,11 @@ class SoundManager {
   alarm(seat: number, count: number): void {
     this.playBgm('Exciting');
     this.voice(seat, count <= 1 ? 'baojing1' : 'baojing2');
+  }
+
+  /** 局内快捷聊天语音：播放指定座位声线的 voice{index}.wav（index=1~12，文本见 chatVoices.ts） */
+  chatVoice(seat: number, index: number): void {
+    this.voice(seat, `voice${index}`);
   }
 }
 

@@ -15,6 +15,26 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: 'v1.5.0',
+    date: '2026-08-28',
+    highlights: '对局表现力版本',
+    added: [
+      '炸弹 / 王炸专属出牌动画：全屏震屏闪光 + 鎏金大字与冲击波 / 火箭升空爆闪，与音效同拍触发',
+      '局内快捷语音：手牌区麦克风按钮，12 条固定语音可选（文字与语音同步），联机模式全房间可听可见，3 秒防刷屏冷却',
+      '压制音效：跟牌压制时随机播报「压上啦」等压制语音（yapai），与牌型语音各 50% 概率二选一',
+      '暗黑牌面风格：玄黑底鎏金辉，黑桃 / 梅花鎏金、红桃 / 方片朱砂，暗金徽章花色',
+      '象棋牌面风格：花色以国际象棋棋子呈现（黑桃♜ 红桃♖ 梅花♟ 方片♙，大小王♔♕）',
+      '自定义牌背系统：经典翡翠 / 金丝楠 / 午夜蓝 / 酒红绒 / 星河 / 青竹 6 种预设，AI 牌堆 / 发牌动画 / 闷抓暗牌统一生效',
+      '首页在线版本入口：智能 AI 版与经典 AI 版地址直达跳转',
+      '项目工程清理：移除参考仓库与构建产物，瘦身约 61MB',
+    ],
+    fixed: [
+      '手机横置缩放比例异常导致部分按钮点不到（旋转视口改用 visualViewport 动态尺寸，弹窗限高改按容器百分比，发牌飞牌目标按容器实测换算）',
+      'AI 不要后转一圈时出牌区闪回本轮已被压过的旧牌（「不出」气泡现持续显示到本轮结束）',
+      '癞子 10 组合其他牌型时左下角标注显示「癞=」而非「癞10」（牌面字体「10」字形与正文字体不互通）',
+    ],
+  },
+  {
     version: 'v1.4.0',
     date: '2026-08-27',
     highlights: '个性化定制版本',
@@ -137,7 +157,7 @@ export default function ChangelogPanel({ open, onClose }: ChangelogPanelProps) {
             exit={{ opacity: 0, scale: 0.95, y: 16 }}
             transition={{ type: 'spring', stiffness: 300, damping: 26 }}
             className={cn(
-              'w-full max-w-lg max-h-[85vh] overflow-y-auto rounded-2xl border shadow-2xl',
+              'w-full max-w-lg max-h-[85%] overflow-y-auto rounded-2xl border shadow-2xl',
               isLight ? 'bg-[#f5ecd7] border-amber-700/30' : 'bg-ink-800/95 border-gold-600/40',
             )}
             onClick={(e) => e.stopPropagation()}

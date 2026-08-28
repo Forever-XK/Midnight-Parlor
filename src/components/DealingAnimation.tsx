@@ -1,9 +1,10 @@
 // 发牌动画 —— 牌从中央牌堆飞向三位玩家，从左至右轮流发牌
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { motion } from 'framer-motion';
 import type { Card } from '@shared/types';
 import { useGameStore } from '@/store/gameStore';
 import { useThemeStore } from '@/store/themeStore';
+import { useCardBackStore, getCardBack } from '@/store/cardBackStore';
 import { sound } from '@/lib/soundManager';
 import { getCardLabel, getSuitLabel, isRedCard, isJoker } from '@/lib/cards';
 import { cn } from '@/lib/utils';
@@ -16,11 +17,14 @@ interface DealItem {
   stackIndex: number; // 该座位已发的第几张（用于错开堆叠）
 }
 
-// 各座位相对屏幕中央的目标偏移（vw/vh 单位，适配不同屏幕）
-const TARGET_OFFSET: Record<number, { x: string; y: string; rotate: number }> = {
-  0: { x: '-5vw', y: '22vh', rotate: 0 },       // 玩家：底部
-  1: { x: '26vw', y: '-18vh', rotate: 8 },      // 右上 AI
-  2: { x: '-26vw', y: '-18vh', rotate: -8 },    // 左上 AI
+// 各座位相对屏幕中央的目标偏移（占遮罩容器的比例）。
+// 旧实现用 vw/vh（物理视口单位）：手机旋转/紧凑缩放模式下遮罩实际是
+// 缩放后的设计画布，vw/vh 与它完全脱节导致飞牌目标错位甚至飞出画布。
+// 改为按遮罩实测尺寸换算像素，任何布局（桌面/旋转/紧凑）都正确。
+const TARGET_FRAC: Record<number, { x: number; y: number; rotate: number }> = {
+  0: { x: -0.05, y: 0.22, rotate: 0 },       // 玩家：底部
+  1: { x: 0.26, y: -0.18, rotate: 8 },       // 右上 AI
+  2: { x: -0.26, y: -0.18, rotate: -8 },     // 左上 AI
 };
 
 const DEAL_INTERVAL = 72;   // 每张牌间隔（ms）
@@ -32,12 +36,32 @@ export default function DealingAnimation() {
   const finishDealing = useGameStore((s) => s.finishDealing);
   const mySeat = useGameStore((s) => s.mySeat);
   const isLight = useThemeStore((s) => s.theme === 'light');
+  // 发牌动画背面用所选牌背风格（深色主题；浅色保持原金棕渐变类）
+  const backId = useCardBackStore((s) => s.back);
+  const dealBack = getCardBack(backId, isLight);
   const [dealtCount, setDealtCount] = useState(0);
 
+  // 遮罩容器实测尺寸：飞牌目标按容器比例换算（覆盖旋转/紧凑缩放等所有布局）
+  const overlayRef = useRef<HTMLDivElement>(null);
+  const [box, setBox] = useState({ w: 0, h: 0 });
+  useEffect(() => {
+    const el = overlayRef.current;
+    if (!el) return;
+    const update = () => setBox({ w: el.clientWidth, h: el.clientHeight });
+    update();
+    window.addEventListener('resize', update);
+    return () => window.removeEventListener('resize', update);
+  }, []);
+
   // 显示位置：我的座位固定在底部，下家(右)、上家(左)；联机模式下按 mySeat 换算
-  const displayTarget = (seat: number) => {
+  const targetPx = (seat: number) => {
     const rel = ((seat - mySeat) % 3 + 3) % 3; // 0=我(底部), 1=下家(右), 2=上家(左)
-    return TARGET_OFFSET[rel];
+    const frac = TARGET_FRAC[rel];
+    return {
+      x: frac.x * box.w,
+      y: frac.y * box.h,
+      rotate: frac.rotate,
+    };
   };
 
   // 闷抓模式：全桌暗牌。飞行的牌全部显示背面，哪怕是自己的。
@@ -97,6 +121,7 @@ export default function DealingAnimation() {
 
   return (
     <motion.div
+      ref={overlayRef}
       className="fixed inset-0 z-50 flex items-center justify-center pointer-events-none felt-texture"
       initial={{ opacity: 1 }}
       exit={{ opacity: 0 }}
@@ -144,9 +169,9 @@ export default function DealingAnimation() {
         </motion.div>
       </div>
 
-      {/* 飞行的牌 */}
-      {sequence.map((item) => {
-        const target = displayTarget(item.seat);
+      {/* 飞行的牌（等容器尺寸测好后再生效动画目标，避免首帧飞向中心） */}
+      {box.w > 0 && sequence.map((item) => {
+        const target = targetPx(item.seat);
         const isHuman = item.seat === mySeat;
         // 闷抓模式：所有座位都发背面（不能查看手牌）
         // 其它模式：仅自己座位正面（牌值仍是 dummy，不泄密），AI 座位背面
@@ -159,8 +184,8 @@ export default function DealingAnimation() {
             className="absolute left-1/2 top-1/2"
             initial={{ x: '-50%', y: '-50%', opacity: 0, scale: 0.6, rotate: 0 }}
             animate={{
-              x: `calc(-50% + ${target.x} + ${stackX}px)`,
-              y: `calc(-50% + ${target.y} + ${stackY}px)`,
+              x: `calc(-50% + ${(target.x + stackX).toFixed(1)}px)`,
+              y: `calc(-50% + ${(target.y + stackY).toFixed(1)}px)`,
               opacity: [0, 1, 1, isHuman ? 1 : 0.85],
               scale: 1,
               rotate: target.rotate,
@@ -249,7 +274,7 @@ export default function DealingAnimation() {
                 )}
               </div>
             ) : (
-              // AI 牌：背面朝下
+              // AI 牌：背面朝下（用所选牌背风格）
               <div
                 className={cn(
                   "w-12 h-[68px] rounded-lg border shadow-card",
@@ -257,10 +282,13 @@ export default function DealingAnimation() {
                     ? 'bg-gradient-to-br from-amber-700 via-amber-800 to-amber-900 border-amber-600/50'
                     : 'border-gold-600/40',
                 )}
-                style={!isLight ? { background: 'linear-gradient(135deg, #0f6048 0%, #0a4d3a 50%, #063326 100%)' } : {}}
+                style={!isLight ? { background: dealBack.background } : {}}
               >
                 <div className="w-full h-full rounded-lg flex items-center justify-center">
-                  <span className={cn("text-xs font-main", isLight ? 'text-amber-200/30' : 'text-gold-500/30')}>♦</span>
+                  <span
+                    className="text-xs font-card"
+                    style={{ color: dealBack.motifColor }}
+                  >{dealBack.motif}</span>
                 </div>
               </div>
             )}

@@ -19,6 +19,7 @@ export interface InternalGame {
   lastPlay: { seat: 0 | 1 | 2; play: Play } | null;
   lastValidPlay: { seat: 0 | 1 | 2; play: Play } | null;
   seatLastPlays: (Play | null)[]; // 每个座位最近一次出的牌（不含 pass），展示在玩家面前
+  seatPassed: boolean[]; // 本轮各座位最近动作是否为「不出」（新一轮清空）
   passCount: number;
   bidState: import('@shared/types').BidState | null;
   multiplier: import('@shared/types').Multiplier;
@@ -132,6 +133,7 @@ export function toPublicState(game: InternalGame, viewerSeat = 0): GameState {
     lastPlay: game.lastPlay,
     lastValidPlay: game.lastValidPlay,
     seatLastPlays: game.seatLastPlays.map((p) => (p ? { ...p, cards: [...p.cards] } : null)),
+    seatPassed: [...game.seatPassed],
     passCount: game.passCount,
     bidState: game.bidState ? { ...game.bidState, bids: [...game.bidState.bids] } : null,
     multiplier: { ...game.multiplier },

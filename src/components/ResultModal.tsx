@@ -66,7 +66,7 @@ export default function ResultModal({ state }: ResultModalProps) {
           animate={{ scale: 1, y: 0 }}
           transition={{ type: 'spring', duration: 0.5 }}
           className={cn(
-            'relative px-10 py-8 max-w-2xl w-full mx-4 text-center rounded-2xl border',
+            'relative px-10 py-8 max-w-2xl w-full mx-4 max-h-[90%] overflow-y-auto text-center rounded-2xl border',
             isLight ? (
               playerWon
                 ? 'bg-gradient-to-br from-green-50/95 via-emerald-50/95 to-green-100/95 border-green-300/50 shadow-xl'
