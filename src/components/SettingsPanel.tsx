@@ -1,9 +1,10 @@
-// 统一游戏设置面板：用户资料 / 牌面风格 / 桌布风格 / 音乐包
+// 统一游戏设置面板：用户资料 / 牌面风格 / 桌布风格 / 牌背风格 / 音乐包
 import { useEffect, useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { X, Layers, Palette, Music, UserRound } from 'lucide-react';
 import { useCardStyleStore, CARD_FACES, type CardFaceStyle } from '@/store/cardStyleStore';
 import { useTableStyleStore, TABLE_STYLES, getTableBackground } from '@/store/tableStyleStore';
+import { useCardBackStore, CARD_BACKS, getCardBack } from '@/store/cardBackStore';
 import { sound, BGM_PACKS, type BgmPack } from '@/lib/soundManager';
 import { useThemeStore } from '@/store/themeStore';
 import { useUserStore } from '@/store/userStore';
@@ -18,12 +19,18 @@ interface SettingsPanelProps {
 // 牌面迷你预览：角标 A♠ + 按风格渲染右下角图案
 function MiniPreview({ style }: { style: CardFaceStyle }) {
   const suit = '♠';
+  const dark = style === 'dark';
   return (
     <div
       className="w-9 h-12 rounded-md border border-gold-600/40 relative shadow-sm overflow-hidden shrink-0"
-      style={{ background: 'linear-gradient(180deg, #fdfaf0 0%, #f8f4e8 100%)' }}
+      style={{ background: dark
+        ? 'linear-gradient(165deg, #262633 0%, #16161f 55%, #0e0e15 100%)'
+        : 'linear-gradient(180deg, #fdfaf0 0%, #f8f4e8 100%)' }}
     >
-      <div className="absolute top-0.5 left-1 flex flex-col items-center leading-none font-card text-ink-800">
+      <div className={cn(
+        'absolute top-0.5 left-1 flex flex-col items-center leading-none font-card',
+        dark ? 'text-gold-300' : 'text-ink-800',
+      )}>
         <span className="text-[10px] font-bold">A</span>
         <span className="text-[8px] leading-none">{suit}</span>
       </div>
@@ -42,7 +49,21 @@ function MiniPreview({ style }: { style: CardFaceStyle }) {
         <span className="absolute right-0.5 bottom-0 text-2xl font-bold font-card text-ink-800" style={{ opacity: 0.9 }}>A</span>
       )}
       {style === 'fun' && (
-        <span className="absolute right-0.5 bottom-0 text-2xl" style={{ opacity: 0.95, lineHeight: 1 }}>🧛‍♂️</span>
+        <span className="absolute right-0.5 bottom-0 text-2xl" style={{ opacity: 0.95, lineHeight: 1 }}>✨</span>
+      )}
+      {style === 'xiangqi' && (
+        <span className="absolute right-0.5 bottom-0 text-2xl font-card text-ink-800" style={{ opacity: 0.95, lineHeight: 1 }}>♜</span>
+      )}
+      {style === 'dark' && (
+        <div
+          className="absolute right-0.5 bottom-0.5 w-5 h-5 rounded-full border border-gold-500/30 flex items-center justify-center"
+          style={{ background: 'rgba(212,175,55,0.08)' }}
+        >
+          <span
+            className="text-[10px] font-card text-gold-300"
+            style={{ filter: 'drop-shadow(0 0 3px rgba(212,175,55,0.5))', lineHeight: 1 }}
+          >{suit}</span>
+        </div>
       )}
     </div>
   );
@@ -55,6 +76,7 @@ export default function SettingsPanel({ open, onClose }: SettingsPanelProps) {
   const isLight = useThemeStore((st) => st.theme === 'light');
   const { face, setFace } = useCardStyleStore();
   const { style: tableStyle, setStyle: setTableStyle } = useTableStyleStore();
+  const { back: backStyle, setBack: setBackStyle } = useCardBackStore();
   const [pack, setPack] = useState<BgmPack>(() => sound.getPack());
   const { username, gender, setProfile } = useUserStore();
   const loadStats = useGameStore((st) => st.loadStats);
@@ -96,7 +118,7 @@ export default function SettingsPanel({ open, onClose }: SettingsPanelProps) {
             exit={{ opacity: 0, scale: 0.95, y: 16 }}
             transition={{ type: 'spring', stiffness: 300, damping: 26 }}
             className={cn(
-              'w-full max-w-lg max-h-[85vh] overflow-y-auto rounded-2xl border shadow-2xl',
+              'w-full max-w-lg max-h-[85%] overflow-y-auto rounded-2xl border shadow-2xl',
               isLight ? 'bg-[#f5ecd7] border-amber-700/30' : 'bg-ink-800/95 border-gold-600/40',
             )}
             onClick={(e) => e.stopPropagation()}
@@ -295,6 +317,59 @@ export default function SettingsPanel({ open, onClose }: SettingsPanelProps) {
                       )}>{t.desc}</div>
                     </button>
                   ))}
+                </div>
+              </section>
+
+              {/* ===== 牌背风格 ===== */}
+              <section>
+                <div className={cn(
+                  'flex items-center gap-2 mb-3 text-xs font-main tracking-wider',
+                  isLight ? 'text-amber-800/60' : 'text-gold-500/70',
+                )}>
+                  <Layers className="w-4 h-4" /> 牌背风格
+                </div>
+                <div className="grid grid-cols-3 gap-2">
+                  {CARD_BACKS.map((b) => {
+                    const bk = getCardBack(b.id, isLight);
+                    return (
+                      <button
+                        key={b.id}
+                        onClick={() => setBackStyle(b.id)}
+                        className={cn(
+                          'p-1.5 rounded-xl border transition-all duration-200 text-left',
+                          backStyle === b.id
+                            ? (isLight ? 'border-amber-500 bg-amber-100/50' : 'border-gold-400 bg-gold-500/10')
+                            : (isLight ? 'border-transparent hover:bg-amber-100/40' : 'border-transparent hover:bg-ink-600/50'),
+                        )}
+                      >
+                        {/* 牌背迷你预览 */}
+                        <div
+                          className="w-full h-12 rounded-lg border mb-1 relative overflow-hidden border-gold-600/30 flex items-center justify-center"
+                          style={{ background: bk.background! }}
+                        >
+                          <span className="text-base font-card" style={{ color: bk.motifColor }}>{b.motif}</span>
+                          {backStyle === b.id && (
+                            <div className={cn(
+                              'absolute inset-0 flex items-center justify-center',
+                              isLight ? 'text-amber-200' : 'text-gold-300',
+                            )}>
+                              <span className="text-lg drop-shadow-[0_1px_3px_rgba(0,0,0,0.6)]">✓</span>
+                            </div>
+                          )}
+                        </div>
+                        <div className={cn(
+                          'font-main text-sm',
+                          backStyle === b.id
+                            ? (isLight ? 'text-amber-800' : 'text-gold-300')
+                            : (isLight ? 'text-amber-900/70' : 'text-ivory/70'),
+                        )}>{b.name}</div>
+                        <div className={cn(
+                          'text-[11px]',
+                          isLight ? 'text-amber-800/50' : 'text-ivory/40',
+                        )}>{b.desc}</div>
+                      </button>
+                    );
+                  })}
                 </div>
               </section>
 

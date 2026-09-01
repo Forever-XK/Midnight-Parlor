@@ -261,7 +261,7 @@ export default function Home() {
                 <div className={cn(
                   'text-xs',
                   isLight ? 'text-amber-800/50' : 'text-ivory/40',
-                )}>当前 v1.4.0 · 个性化定制</div>
+                )}>当前 v1.5.1 · 联机修复</div>
               </div>
             </button>
           </div>
@@ -608,6 +608,39 @@ export default function Home() {
                   点击进入
                 </motion.button>
               )}
+
+              {/* 在线版本入口说明（进入游戏按钮下方） */}
+              <motion.div
+                initial={{ opacity: 0 }}
+                animate={{ opacity: 1 }}
+                transition={{ delay: 0.5 }}
+                className={cn(
+                  'mt-4 flex flex-col items-center gap-1 text-xs font-main',
+                  isLight ? 'text-amber-800/70' : 'text-ivory/60',
+                )}
+              >
+                <div>在线版本：</div>
+                <div className="flex flex-wrap justify-center gap-x-4 gap-y-1">
+                  <a
+                    href="https://ddz.fruitrade.cn"
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className={cn(
+                      'underline underline-offset-2 transition-colors',
+                      isLight ? 'text-amber-700 hover:text-amber-900' : 'text-gold-400/80 hover:text-gold-300',
+                    )}
+                  >智能AI版本（机器学习版）：ddz.fruitrade.cn</a>
+                  <a
+                    href="https://old.ddz.fruitrade.cn"
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className={cn(
+                      'underline underline-offset-2 transition-colors',
+                      isLight ? 'text-amber-700 hover:text-amber-900' : 'text-gold-400/80 hover:text-gold-300',
+                    )}
+                  >经典AI版本（本地算法版）：old.ddz.fruitrade.cn</a>
+                </div>
+              </motion.div>
             </motion.div>
           </motion.div>
         )}

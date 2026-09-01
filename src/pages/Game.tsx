@@ -1,7 +1,7 @@
 // 对局页面
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { ArrowLeft, Volume2, VolumeX, Sun, Moon, Settings } from 'lucide-react';
+import { ArrowLeft, Volume2, VolumeX, Sun, Moon, Settings, Mic } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { useGameStore } from '@/store/gameStore';
 import { useThemeStore } from '@/store/themeStore';
@@ -19,7 +19,10 @@ import AIHandStack from '@/components/AIHandStack';
 import PlayingCard from '@/components/PlayingCard';
 import DealingAnimation from '@/components/DealingAnimation';
 import LaiziDrawAnimation from '@/components/LaiziDrawAnimation';
+import SpecialPlayEffect, { type SpecialPlayEffectData } from '@/components/SpecialPlayEffect';
 import CardCounter from '@/components/CardCounter';
+import VoiceChatPanel from '@/components/VoiceChatPanel';
+import ChatBubble from '@/components/ChatBubble';
 import { cn } from '@/lib/utils';
 import { sound } from '@/lib/soundManager';
 import * as onlineApi from '@/lib/onlineApi';
@@ -52,6 +55,9 @@ export default function Game() {
   const tableStyle = useTableStyleStore((st) => st.style);
   const tableBg = getTableBackground(tableStyle, theme === 'light');
   const [showSettings, setShowSettings] = useState(false);
+  // 局内快捷语音
+  const [showChatPanel, setShowChatPanel] = useState(false);
+  const seatChats = useGameStore((s) => s.seatChats);
 
   useEffect(() => {
     if (!gameId) navigate('/');
@@ -113,6 +119,28 @@ export default function Game() {
   const shownLaizi = useRef(new Set<string>());
   const laiziQueue = useRef<Array<{ label: string; rank: number }>>([]);
   const isAnimatingLaizi = useRef(false);
+
+  // ===== 炸弹/王炸出牌特效触发 =====
+  // 逐快照应用 state 时，seatLastPlays 中新出现的 bomb/rocket 牌即触发（与音效同拍）；
+  // 以「gameId + 牌 id」去重：同一手牌只播一次，新一轮清桌不会重播；
+  // 动画播放中若又来一颗炸弹，待动画结束后补播
+  const [specialPlay, setSpecialPlay] = useState<SpecialPlayEffectData | null>(null);
+  const seenSpecialPlays = useRef<Set<string>>(new Set());
+  useEffect(() => {
+    if (!state || state.phase !== 'playing' || specialPlay) return;
+    for (const p of state.seatLastPlays) {
+      if (!p || (p.type !== 'bomb' && p.type !== 'rocket')) continue;
+      const key = `${state.gameId}:${p.cards.map((c) => c.id).join(',')}`;
+      if (seenSpecialPlays.current.has(key)) continue;
+      seenSpecialPlays.current.add(key);
+      setSpecialPlay({ type: p.type, key });
+      break;
+    }
+  }, [state, specialPlay]);
+  // 换局清空去重集合
+  useEffect(() => {
+    if (state?.gameId) seenSpecialPlays.current.clear();
+  }, [state?.gameId]);
 
   // 换局（gameId 变化）时清空癞子"已展示"标记 & 动画队列，保证新局癞子能正确播放
   useEffect(() => {
@@ -215,10 +243,13 @@ export default function Game() {
   const aiLeft = state.players[leftSeat];
   const isPlayerTurn = state.currentSeat === mySeat && !isPlayingSnapshots;
   const isLight = theme === 'light';
-  // 最近一次"不出"的座位（用于在对应玩家面前显示"不出"气泡）
+  // 最近一次"不出"的座位（旧状态无 seatPassed 字段时的回落判定）
   const passingSeat = state.lastPlay && state.lastPlay.play.cards.length === 0
     ? state.lastPlay.seat
     : null;
+  // 各座位本轮最近动作是否为"不出"：气泡持续显示到本轮结束（避免过牌后又闪回本轮早前出过的旧牌）
+  const seatIsPassing = (s: number): boolean =>
+    state.seatPassed ? !!state.seatPassed[s] : passingSeat === s;
 
   const root = (
     <div className={cn(
@@ -368,9 +399,20 @@ export default function Game() {
             )}
             <SeatPlayArea
               play={state.seatLastPlays[leftSeat] ?? null}
-              isPassing={passingSeat === leftSeat}
+              isPassing={seatIsPassing(leftSeat)}
               position="top"
             />
+            {/* 快捷语音气泡（上家：右侧，尾巴指向说话者） */}
+            <AnimatePresence>
+              {seatChats[leftSeat] && (
+                <ChatBubble
+                  key={seatChats[leftSeat]!.key}
+                  text={seatChats[leftSeat]!.text}
+                  tail="left"
+                  className="absolute top-2 left-full ml-2 z-30"
+                />
+              )}
+            </AnimatePresence>
           </div>
 
           {/* 记牌器 */}
@@ -392,9 +434,20 @@ export default function Game() {
             )}
             <SeatPlayArea
               play={state.seatLastPlays[rightSeat] ?? null}
-              isPassing={passingSeat === rightSeat}
+              isPassing={seatIsPassing(rightSeat)}
               position="top"
             />
+            {/* 快捷语音气泡（下家：左侧，尾巴指向说话者） */}
+            <AnimatePresence>
+              {seatChats[rightSeat] && (
+                <ChatBubble
+                  key={seatChats[rightSeat]!.key}
+                  text={seatChats[rightSeat]!.text}
+                  tail="right"
+                  className="absolute top-2 right-full mr-2 z-30"
+                />
+              )}
+            </AnimatePresence>
           </div>
         </div>
 
@@ -410,7 +463,7 @@ export default function Game() {
         <div className="flex flex-col items-center gap-2 pb-2 z-10 min-h-[60px]">
           <SeatPlayArea
             play={state.seatLastPlays[mySeat] ?? null}
-            isPassing={passingSeat === mySeat}
+            isPassing={seatIsPassing(mySeat)}
             position="bottom"
           />
           {state.phase === 'menzhuaChoice' && state.currentSeat === mySeat && <MenzhuaChoicePanel />}
@@ -441,6 +494,17 @@ export default function Game() {
             <PlayingCard card={state.mingCard} size="sm" laiziRanks={laiziRanks} />
           </div>
         )}
+        {/* 我的快捷语音气泡（麦克风按钮上方） */}
+        <AnimatePresence>
+          {seatChats[mySeat] && (
+            <ChatBubble
+              key={seatChats[mySeat]!.key}
+              text={seatChats[mySeat]!.text}
+              tail="bottom"
+              className="absolute right-3 -top-9 z-30"
+            />
+          )}
+        </AnimatePresence>
         <div className="flex items-center justify-between mb-1">
           <div className="flex items-center gap-2">
             <span className={cn(
@@ -464,10 +528,25 @@ export default function Game() {
               )}>农民</span>
             )}
           </div>
-          <span className={cn(
-            'text-xs',
-            isLight ? 'text-amber-800/60' : 'text-ivory/50',
-          )}>{player.cardCount} 张</span>
+          <div className="flex items-center gap-2">
+            {/* 发语音入口 */}
+            <button
+              onClick={() => setShowChatPanel(true)}
+              title="发语音"
+              className={cn(
+                'inline-flex items-center justify-center rounded-xl px-3 py-1.5 border transition-all duration-200',
+                isLight
+                  ? 'border-amber-700/30 text-amber-800 bg-white/50 hover:bg-amber-100/50'
+                  : 'border-gold-600/40 text-gold-400 bg-ink-600/40 hover:border-gold-500 hover:text-gold-300',
+              )}
+            >
+              <Mic className="w-4 h-4" />
+            </button>
+            <span className={cn(
+              'text-xs',
+              isLight ? 'text-amber-800/60' : 'text-ivory/50',
+            )}>{player.cardCount} 张</span>
+          </div>
         </div>
         {state.mode === 'menzhua' && !state.handRevealed ? (
           <div className="flex items-center justify-center min-h-[112px]">
@@ -527,8 +606,13 @@ export default function Game() {
         )}
       </AnimatePresence>
 
+      {/* 炸弹/王炸出牌特效 */}
+      <SpecialPlayEffect effect={specialPlay} onDone={() => setSpecialPlay(null)} />
+
       {/* 统一游戏设置面板 */}
       <SettingsPanel open={showSettings} onClose={() => setShowSettings(false)} />
+      {/* 局内快捷语音面板 */}
+      <VoiceChatPanel open={showChatPanel} onClose={() => setShowChatPanel(false)} />
     </div>
   );
 
