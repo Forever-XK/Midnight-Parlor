@@ -80,6 +80,7 @@ function makeAIContext(game: InternalGame, seat: Seat): AIContext {
     cardTracker: game.cardTracker,
     laiziRanks: laiziRanksOf(game),
     multiBomb: multiBombOf(game),
+    passCount: game.passCount,
   };
 }
 
@@ -173,6 +174,7 @@ export function createGameSession(
     lastPlay: null,
     lastValidPlay: null,
     seatLastPlays: [null, null, null],
+    seatPassed: [false, false, false],
     passCount: 0,
     bidState: null,
     multiplier: emptyMultiplier(),
@@ -554,6 +556,7 @@ function executePlay(game: InternalGame, seat: Seat, play: Play): void {
   game.lastPlay = { seat, play };
   game.lastValidPlay = { seat, play };
   game.seatLastPlays[seat] = play; // 记录该座位最近出的牌
+  game.seatPassed[seat] = false;  // 本轮该座位最近动作为出牌
   game.passCount = 0;
   game.playCounts[seat]++;
   log(game, seat, 'play', play);
@@ -577,6 +580,7 @@ function executePlay(game: InternalGame, seat: Seat, play: Play): void {
 function executePass(game: InternalGame, seat: Seat): void {
   game.lastPlay = { seat, play: { type: 'single', cards: [], mainRank: 0 as any, length: 0 } };
   game.passCount++;
+  game.seatPassed[seat] = true; // 本轮该座位最近动作为不出（气泡持续到本轮结束）
   log(game, seat, 'pass');
   // 两人不出后，上家有效出牌者重新领出，清空桌面所有出牌展示
   if (game.passCount >= 2 && game.lastValidPlay) {
@@ -585,6 +589,7 @@ function executePass(game: InternalGame, seat: Seat): void {
     game.lastPlay = null;
     game.passCount = 0;
     game.seatLastPlays = [null, null, null]; // 新一轮，清空桌面
+    game.seatPassed = [false, false, false];
   } else {
     game.currentSeat = nextSeat(seat);
   }

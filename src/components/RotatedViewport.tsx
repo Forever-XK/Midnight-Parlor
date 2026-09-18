@@ -4,9 +4,17 @@
 import { useEffect } from 'react';
 import { useDeviceStore } from '@/store/deviceStore';
 
+// 实际可见区域尺寸：优先用 visualViewport（浏览器地址栏/工具栏显隐、
+// 页面缩放时它才是真实可见尺寸；window.innerHeight 在部分移动浏览器
+// 与 fixed 定位的布局视口不一致，会导致旋转容器尺寸/缩放比例异常）
+function readSize(): { w: number; h: number } {
+  const vv = typeof window !== 'undefined' ? window.visualViewport : null;
+  if (vv && vv.width > 0 && vv.height > 0) return { w: vv.width, h: vv.height };
+  return { w: window.innerWidth, h: window.innerHeight };
+}
+
 function computeViewport() {
-  const w = window.innerWidth;
-  const h = window.innerHeight;
+  const { w, h } = readSize();
   const coarse = window.matchMedia('(pointer: coarse)').matches;
   const rotated = h > w && coarse && Math.min(w, h) < 768;
   return {
@@ -24,11 +32,22 @@ export default function RotatedViewport({ children }: { children: React.ReactNod
       document.body.classList.toggle('ddz-rotated', computeViewport().rotated);
     };
     apply();
-    window.addEventListener('resize', apply);
-    window.addEventListener('orientationchange', apply);
+    const vv = window.visualViewport;
+    const onResize = () => apply();
+    window.addEventListener('resize', onResize);
+    window.addEventListener('orientationchange', onResize);
+    // visualViewport 的 resize/scroll：工具栏显隐、捏合缩放时可见区域变化
+    if (vv) {
+      vv.addEventListener('resize', onResize);
+      vv.addEventListener('scroll', onResize);
+    }
     return () => {
-      window.removeEventListener('resize', apply);
-      window.removeEventListener('orientationchange', apply);
+      window.removeEventListener('resize', onResize);
+      window.removeEventListener('orientationchange', onResize);
+      if (vv) {
+        vv.removeEventListener('resize', onResize);
+        vv.removeEventListener('scroll', onResize);
+      }
       document.body.classList.remove('ddz-rotated');
     };
   }, []);

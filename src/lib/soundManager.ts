@@ -60,6 +60,9 @@ class SoundManager {
   private activeAudios = new Set<HTMLAudioElement>();
   // 预加载实例池：持有引用确保大音效文件 load 完成并进入浏览器缓存
   private preloadPool: HTMLAudioElement[] = [];
+  // 高频短音效复用池（选牌/按钮点击/出牌）：实例在构造时即加载完成，
+  // 播放时直接重放，杜绝 new Audio() 的加载延迟与缓存读取失败导致的「时有时无」
+  private sfxPool: Record<string, HTMLAudioElement[]> = {};
 
   constructor() {
     // 初始音乐包（默认 bgm1）
@@ -91,6 +94,17 @@ class SoundManager {
         a.load();
         this.preloadPool.push(a);
       } catch { /* 忽略 */ }
+    }
+    // 高频短音效复用池：每音效预创建 4 个已加载实例，轮转复用
+    for (const k of ['xuanpai', 'xuanze', 'chupai']) {
+      const u = this.effects[k];
+      if (!u) continue;
+      this.sfxPool[k] = Array.from({ length: 4 }, () => {
+        const a = new Audio(u);
+        a.preload = 'auto';
+        a.load();
+        return a;
+      });
     }
   }
 
@@ -170,8 +184,25 @@ class SoundManager {
 
   private effect(name: string, volume = 0.6): void {
     const key = String(name).toLowerCase();
+    // 高频短音效走复用池（已加载实例直接重放，无加载延迟/缓存读取失败风险）
+    if (this.sfxPool[key]) { this.playPooled(key, volume); return; }
     const url = this.effects[key];
     this.play(url, volume);
+  }
+
+  /** 从短音效复用池取空闲实例重放；全忙时复用首个实例从头播放（快速连点时表现为重启音效，听感正常） */
+  private playPooled(name: string, volume: number): void {
+    if (!this.enabled) return;
+    const pool = this.sfxPool[name];
+    if (!pool?.length) return;
+    try {
+      const audio = pool.find((a) => a.paused || a.ended) ?? pool[0];
+      audio.volume = volume;
+      if (audio.currentTime > 0) audio.currentTime = 0;
+      void audio.play().catch(() => { /* 单次播放失败忽略，等待下次触发 */ });
+    } catch (e) {
+      console.warn('[sound] pooled play throw:', name, e);
+    }
   }
 
   private randomVoice(seat: number, names: string[]): void {
@@ -283,10 +314,18 @@ class SoundManager {
     this.randomVoice(seat, ['buyao1', 'buyao2', 'buyao3', 'buyao4']);
   }
 
-  /** 出牌：出牌音效 + 点数/牌型语音 + 组合特效 */
-  playCards(seat: number, play: Play): void {
+  /** 出牌：出牌音效 + 点数/牌型语音 + 组合特效
+   *  @param isFollow 是否为跟牌压制（压别人出的牌）：此时从牌型语音与压制语音（yapai1~3）中随机二选一 */
+  playCards(seat: number, play: Play, isFollow = false): void {
     // 出牌拍桌音效
     this.effect('chupai', 0.5);
+    // 压制（跟牌）：50% 概率播压制语音替代牌型语音；炸弹/王炸仍保留爆炸特效音
+    if (isFollow && Math.random() < 0.5) {
+      this.voice(seat, `yapai${1 + Math.floor(Math.random() * 3)}`);
+      if (play.type === 'bomb') this.effect('bomb', 0.8);
+      if (play.type === 'rocket') this.effect('longbomb', 0.8);
+      return;
+    }
     switch (play.type) {
       case 'single':
         this.voice(seat, `${singleVoiceIndex(play.mainRank)}`);
@@ -336,6 +375,11 @@ class SoundManager {
   alarm(seat: number, count: number): void {
     this.playBgm('Exciting');
     this.voice(seat, count <= 1 ? 'baojing1' : 'baojing2');
+  }
+
+  /** 局内快捷聊天语音：播放指定座位声线的 voice{index}.wav（index=1~12，文本见 chatVoices.ts） */
+  chatVoice(seat: number, index: number): void {
+    this.voice(seat, `voice${index}`);
   }
 }
 

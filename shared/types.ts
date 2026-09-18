@@ -105,6 +105,7 @@ export interface GameState {
   lastPlay: { seat: Seat; play: Play } | null;
   lastValidPlay: { seat: Seat; play: Play } | null; // 当前需压过的有效牌
   seatLastPlays: (Play | null)[]; // 每个座位最近一次出的牌（不含 pass），展示在玩家面前
+  seatPassed: boolean[]; // 本轮各座位最近动作是否为「不出」（新一轮清空），用于持续显示不出气泡
   passCount: number;
   bidState: BidState | null;
   multiplier: Multiplier;

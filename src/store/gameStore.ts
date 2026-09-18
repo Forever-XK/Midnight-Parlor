@@ -6,6 +6,7 @@ import type { PlayChoiceInfo } from '@/lib/api';
 import * as onlineApi from '@/lib/onlineApi';
 import { sound } from '@/lib/soundManager';
 import { gameWS } from '@/lib/gameWS';
+import { chatVoiceText } from '@/lib/chatVoices';
 import { currentUsername, currentUserGender } from '@/store/userStore';
 
 // 快照播放版本号 —— 每次开始新游戏时递增，用于取消旧的快照播放
@@ -13,6 +14,12 @@ let snapshotVersion = 0;
 
 // 选牌分析请求序号 —— 仅最新一次选牌的分析结果生效（防止竞态旧结果覆盖）
 let analyzeSeq = 0;
+
+// ===== 局内快捷语音 =====
+// 各座位聊天气泡的自动消失定时器（模块级，跨 store 更新持有）
+const chatTimers: (ReturnType<typeof setTimeout> | null)[] = [null, null, null];
+const CHAT_DISPLAY_MS = 4000;   // 气泡显示时长
+const CHAT_COOLDOWN_MS = 3000;  // 发送冷却（防刷屏）
 
 // 防御性手牌清洗：闷抓模式 + 尚未看牌/闷抓时，
 // 若后端（或跨局残留）把任何手牌写进 state.players[*].hand，统一在前端再抹掉。
@@ -32,8 +39,14 @@ function scrubSnapshots(snaps: Snapshot[], mySeat: Seat): Snapshot[] {
   }));
 }
 
+// 判定「跟牌压制」：动作前桌面上有待压的有效牌（lastPlay 非空且非 pass，且不是自己领出转回）
+function isFollowPlay(prevState: GameState | null | undefined, seat: number): boolean {
+  const lp = prevState?.lastPlay;
+  return !!lp && lp.play.cards.length > 0 && lp.seat !== seat;
+}
+
 // 播放 AI 事件音效（'turn' 为回合切换标记，不发声）
-function playEventSound(event: AIEvent, state: GameState): void {
+function playEventSound(event: AIEvent, state: GameState, prevState?: GameState | null): void {
   if (event.action === 'turn') return;
   if (event.action === 'bid') {
     const hasBid = (state.bidState?.bids ?? []).some((b) => b.bid > 0);
@@ -45,11 +58,36 @@ function playEventSound(event: AIEvent, state: GameState): void {
     return;
   }
   if (event.action === 'play' && event.value) {
-    sound.playCards(event.seat, event.value as Play);
+    sound.playCards(event.seat, event.value as Play, isFollowPlay(prevState, event.seat));
     // 出牌后剩 1-2 张 → 报牌警示
     const count = state.players[event.seat]?.cardCount ?? 99;
     if (count > 0 && count <= 2) sound.alarm(event.seat, count);
   }
+}
+
+// 显示某座位的聊天气泡（CHAT_DISPLAY_MS 后自动消失；同座位新消息覆盖旧消息）
+function showChatBubble(
+  set: (fn: (s: GameStore) => Partial<GameStore>) => void,
+  seat: number,
+  voiceIndex: number,
+): void {
+  const text = chatVoiceText(voiceIndex);
+  if (!text) return;
+  const idx = ((seat % 3) + 3) % 3;
+  set((s) => {
+    const next = [...s.seatChats];
+    next[idx] = { text, key: `${seat}-${Date.now()}` };
+    return { seatChats: next };
+  });
+  if (chatTimers[idx]) clearTimeout(chatTimers[idx]!);
+  chatTimers[idx] = setTimeout(() => {
+    set((s) => {
+      const next = [...s.seatChats];
+      next[idx] = null;
+      return { seatChats: next };
+    });
+    chatTimers[idx] = null;
+  }, CHAT_DISPLAY_MS);
 }
 
 interface GameStore {
@@ -70,6 +108,10 @@ interface GameStore {
   isDealing: boolean;          // 正在播放发牌动画
   pendingSnapshots: Snapshot[]; // 发牌动画完成后待播放的快照
   dealtGameId: string | null;  // 已播放过发牌动画的 gameId（跨组件/跨路由防重播兜底）
+
+  // 局内快捷语音（各座位当前显示的聊天气泡；null=无）
+  seatChats: ({ text: string; key: string } | null)[];
+  chatCooldownUntil: number;   // 下次可发送时间戳（防刷屏）
 
   // 联机对战会话
   online: boolean;
@@ -100,6 +142,10 @@ interface GameStore {
   setError: (e: string | null) => void;
   quitGame: () => void;
 
+  // 局内快捷语音
+  sendChat: (voiceIndex: number) => void;         // 发送：播放语音+气泡（联机再广播给其他人）
+  handleRemoteChat: (seat: number, voiceIndex: number) => void; // 收到其他玩家的语音
+
   // 联机会话控制
   setOnlineSession: (roomId: string, mySeat: Seat, name: string, state: GameState, snapshots?: Snapshot[] | null) => void;
   syncOnlineState: (state: GameState) => void;
@@ -129,6 +175,9 @@ export const useGameStore = create<GameStore>((set, get) => ({
   isDealing: false,
   pendingSnapshots: [],
   dealtGameId: null,
+
+  seatChats: [null, null, null],
+  chatCooldownUntil: 0,
 
   online: false,
   roomId: null,
@@ -387,7 +436,8 @@ export const useGameStore = create<GameStore>((set, get) => ({
         const preState = res.snapshots?.[0]?.state ?? res.state;
         const myPlay = preState?.seatLastPlays?.[mySeat] ?? res.state?.seatLastPlays?.[mySeat];
         if (myPlay && myPlay.cards.length > 0) {
-          sound.playCards(mySeat, myPlay);
+          // state 为动作前状态：lastPlay 非空（非 pass）即本机跟牌压制
+          sound.playCards(mySeat, myPlay, isFollowPlay(state, mySeat));
           const cnt = res.state?.players?.[mySeat]?.cardCount ?? 99;
           if (cnt > 0 && cnt <= 2) sound.alarm(mySeat, cnt);
         }
@@ -430,7 +480,8 @@ export const useGameStore = create<GameStore>((set, get) => ({
       const preState = res.snapshots?.[0]?.state ?? res.state;
       const myPlay = preState?.seatLastPlays?.[0] ?? res.state?.seatLastPlays?.[0];
       if (myPlay && myPlay.cards.length > 0) {
-        sound.playCards(0, myPlay);
+        // state 为动作前状态：lastPlay 非空（非 pass）即本机跟牌压制
+        sound.playCards(0, myPlay, isFollowPlay(state, 0));
         const cnt = res.state?.players?.[0]?.cardCount ?? 99;
         if (cnt > 0 && cnt <= 2) sound.alarm(0, cnt);
       }
@@ -555,9 +606,11 @@ export const useGameStore = create<GameStore>((set, get) => ({
       await new Promise((r) => setTimeout(r, snap.event.delay));
       // 版本号不匹配说明已开始新游戏，中止旧快照播放
       if (version !== snapshotVersion) return;
+      // 动作前状态（用于判定跟牌压制）
+      const prevState = get().state;
       set({ state: scrubMenzhuaHands(snap.state, seat) });
       // 播放该 AI 动作对应的音效
-      playEventSound(snap.event, snap.state);
+      playEventSound(snap.event, snap.state, prevState);
     }
     if (version === snapshotVersion) {
       set({ isPlayingSnapshots: false });
@@ -582,6 +635,7 @@ export const useGameStore = create<GameStore>((set, get) => ({
       isDealing: false,
       pendingSnapshots: [],
       dealtGameId: null,
+      seatChats: [null, null, null],
       online: false,
       roomId: null,
       mySeat: 0,
@@ -633,7 +687,8 @@ export const useGameStore = create<GameStore>((set, get) => ({
       const pp = prev.seatLastPlays[s];
       const cp = state.seatLastPlays[s];
       if (cp && cp.cards.length > 0 && JSON.stringify(pp) !== JSON.stringify(cp)) {
-        sound.playCards(s, cp);
+        // prev.lastPlay 为动作前桌面上的待压牌 → 判定跟牌压制
+        sound.playCards(s, cp, isFollowPlay(prev, s));
         const cnt = state.players[s]?.cardCount ?? 99;
         if (cnt > 0 && cnt <= 2) sound.alarm(s, cnt);
       }
@@ -666,7 +721,27 @@ export const useGameStore = create<GameStore>((set, get) => ({
       state: null, gameId: null, selectedCards: new Set(), playChoices: [], chosenPlayIdx: 0, error: null,
       isPlayingSnapshots: false, isDealing: false, pendingSnapshots: [],
       wsConnected: false, dealtGameId: null,
+      seatChats: [null, null, null],
     });
+  },
+
+  // ===== 局内快捷语音 =====
+  sendChat: (voiceIndex) => {
+    const now = Date.now();
+    if (now < get().chatCooldownUntil) return; // 冷却中（防刷屏）
+    set({ chatCooldownUntil: now + CHAT_COOLDOWN_MS });
+    const mySeat = get().mySeat;
+    // 自己本地立即播放（用自己声线）+ 显示气泡
+    sound.chatVoice(mySeat, voiceIndex);
+    showChatBubble(set, mySeat, voiceIndex);
+    // 联机模式：广播给房间内其他玩家
+    if (get().online) gameWS.sendChat(voiceIndex);
+  },
+
+  handleRemoteChat: (seat, voiceIndex) => {
+    // 收到其他玩家的快捷语音：用该座位声线播放 + 显示气泡
+    sound.chatVoice(seat, voiceIndex);
+    showChatBubble(set, seat, voiceIndex);
   },
 
   // ===== WebSocket 联机同步 =====
@@ -701,6 +776,10 @@ export const useGameStore = create<GameStore>((set, get) => ({
           return;
         }
         get().playSnapshots([scrubbedSnap]);
+      },
+      // onChat：收到房间内其他玩家的快捷语音
+      (seat, voiceIndex) => {
+        get().handleRemoteChat(seat, voiceIndex);
       },
     );
     set({ wsConnected: true });

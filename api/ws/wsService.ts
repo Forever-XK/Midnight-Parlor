@@ -14,11 +14,13 @@ import { getGame, toPublicState } from '../game/store';
 export type WSMessage =
   | { type: 'subscribe'; roomId: string; seat?: number }
   | { type: 'unsubscribe'; roomId: string }
+  | { type: 'chat'; voiceIndex: number } // 局内快捷语音（roomId 取当前订阅房间）
   | { type: 'ping' };
 
 export type WSBroadcast =
   | { type: 'state'; roomId: string; state: GameState }
   | { type: 'snapshot'; roomId: string; snapshot: Snapshot }
+  | { type: 'chat'; roomId: string; seat: number; voiceIndex: number }
   | { type: 'error'; roomId: string; message: string }
   | { type: 'pong' };
 
@@ -51,6 +53,16 @@ class WSService {
           } else if (msg.type === 'unsubscribe' && subscribedRoom) {
             this.unsub(subscribedRoom, sub);
             subscribedRoom = null;
+          } else if (msg.type === 'chat' && subscribedRoom) {
+            // 局内快捷语音：转发给房间内其他订阅者（发送方本地已播放）
+            const idx = Math.min(12, Math.max(1, msg.voiceIndex | 0));
+            const subs = this.rooms.get(subscribedRoom);
+            subs?.forEach((s) => {
+              if (s === sub || !s.ws || s.ws.readyState !== 1) return;
+              s.ws.send(JSON.stringify({
+                type: 'chat', roomId: subscribedRoom, seat: sub.seat ?? 0, voiceIndex: idx,
+              } as WSBroadcast));
+            });
           } else if (msg.type === 'ping') {
             if (ws.readyState === 1) ws.send(JSON.stringify({ type: 'pong' } as WSBroadcast));
           }

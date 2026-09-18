@@ -3,12 +3,14 @@ import type { GameState, Snapshot } from '@shared/types';
 
 export type WSStateHandler = (state: GameState) => void;
 export type WSSnapshotHandler = (snapshot: Snapshot) => void;
+export type WSChatHandler = (seat: number, voiceIndex: number) => void;
 
 interface WSRoomClient {
   roomId: string;
   seat?: number;
   onState?: WSStateHandler;
   onSnapshot?: WSSnapshotHandler;
+  onChat?: WSChatHandler;
   connected: boolean;
 }
 
@@ -32,10 +34,21 @@ class GameWSClient {
     }
   }
 
-  subscribe(roomId: string, seat: number | undefined, onState: WSStateHandler, onSnapshot: WSSnapshotHandler) {
-    this.room = { roomId, seat, onState, onSnapshot, connected: false };
+  subscribe(
+    roomId: string,
+    seat: number | undefined,
+    onState: WSStateHandler,
+    onSnapshot: WSSnapshotHandler,
+    onChat?: WSChatHandler,
+  ) {
+    this.room = { roomId, seat, onState, onSnapshot, onChat, connected: false };
     this.manualClose = false;
     this.connect();
+  }
+
+  /** 发送局内快捷语音（服务器转发给房间内其他玩家；自己本地播放） */
+  sendChat(voiceIndex: number) {
+    this.send({ type: 'chat', voiceIndex });
   }
 
   unsubscribe() {
@@ -85,6 +98,8 @@ class GameWSClient {
           this.room.onState?.(msg.state as GameState);
         } else if (msg.type === 'snapshot' && msg.snapshot) {
           this.room.onSnapshot?.(msg.snapshot as Snapshot);
+        } else if (msg.type === 'chat' && typeof msg.voiceIndex === 'number') {
+          this.room.onChat?.(msg.seat as number, msg.voiceIndex as number);
         }
       } catch { /* ignore */ }
     };

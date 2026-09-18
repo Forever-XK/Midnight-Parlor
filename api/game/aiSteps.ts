@@ -32,6 +32,7 @@ function makeAIContext(game: InternalGame, seat: Seat): AIContext {
     cardTracker: game.cardTracker,
     laiziRanks,
     multiBomb: multiBombOf(game),
+    passCount: game.passCount,
   };
 }
 
@@ -153,6 +154,7 @@ function executePlay(game: InternalGame, seat: Seat, play: Play): void {
   game.lastPlay = { seat, play };
   game.lastValidPlay = { seat, play };
   game.seatLastPlays[seat] = play;
+  game.seatPassed[seat] = false;
   game.passCount = 0;
   game.playCounts[seat]++;
   updateCardTracker(game, play.cards);
@@ -165,12 +167,14 @@ function executePlay(game: InternalGame, seat: Seat, play: Play): void {
 function executePass(game: InternalGame, seat: Seat): void {
   game.lastPlay = { seat, play: { type: 'single', cards: [], mainRank: 0 as any, length: 0 } };
   game.passCount++;
+  game.seatPassed[seat] = true;
   if (game.passCount >= 2 && game.lastValidPlay) {
     game.currentSeat = game.lastValidPlay.seat;
     game.lastValidPlay = null;
     game.lastPlay = null;
     game.passCount = 0;
     game.seatLastPlays = [null, null, null];
+    game.seatPassed = [false, false, false];
   } else {
     game.currentSeat = nextSeat(seat);
   }

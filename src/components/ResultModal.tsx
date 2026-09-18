@@ -2,7 +2,7 @@
 import { useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Trophy, Skull, Home, Crown, Sprout } from 'lucide-react';
+import { Trophy, Skull, Home, Crown, Sprout, RotateCw } from 'lucide-react';
 import type { GameState } from '@shared/types';
 import { useGameStore } from '@/store/gameStore';
 import { useThemeStore } from '@/store/themeStore';
@@ -26,7 +26,7 @@ function laiziRanksOf(state: GameState): number[] {
 
 export default function ResultModal({ state }: ResultModalProps) {
   const navigate = useNavigate();
-  const { mySeat, online, exitOnline, quitGame } = useGameStore();
+  const { mySeat, online, exitOnline, quitGame, startGame } = useGameStore();
   const isLight = useThemeStore(s => s.theme === 'light');
 
   const isFinished = state.phase === 'finished' && !!state.result;
@@ -39,6 +39,11 @@ export default function ResultModal({ state }: ResultModalProps) {
   const handleExit = () => {
     if (online) { exitOnline(); navigate('/lobby'); }
     else { quitGame(); navigate('/'); }
+  };
+
+  // 再开一局（仅离线对局）：沿用当前模式与难度直接开新局
+  const handleRestart = () => {
+    startGame();
   };
 
   useEffect(() => {
@@ -66,7 +71,7 @@ export default function ResultModal({ state }: ResultModalProps) {
           animate={{ scale: 1, y: 0 }}
           transition={{ type: 'spring', duration: 0.5 }}
           className={cn(
-            'relative px-10 py-8 max-w-2xl w-full mx-4 text-center rounded-2xl border',
+            'relative px-10 py-8 max-w-2xl w-full mx-4 max-h-[90%] overflow-y-auto text-center rounded-2xl border',
             isLight ? (
               playerWon
                 ? 'bg-gradient-to-br from-green-50/95 via-emerald-50/95 to-green-100/95 border-green-300/50 shadow-xl'
@@ -222,9 +227,18 @@ export default function ResultModal({ state }: ResultModalProps) {
 
           {/* 操作按钮 */}
           <div className="flex gap-3 justify-center">
+            {!online && (
+              <button
+                onClick={handleRestart}
+                className="btn-gold"
+              >
+                <RotateCw className="w-5 h-5" />
+                再开一局
+              </button>
+            )}
             <button
               onClick={handleExit}
-              className="btn-gold"
+              className={online ? 'btn-gold' : 'btn-ghost'}
             >
               <Home className="w-5 h-5" />
               返回大厅

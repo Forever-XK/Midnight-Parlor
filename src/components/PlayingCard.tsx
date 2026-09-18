@@ -5,6 +5,7 @@ import { getCardLabel, getSuitLabel, isRedCard, isJoker, RANK_TEXT } from '@/lib
 import { cn } from '@/lib/utils';
 import { useThemeStore } from '@/store/themeStore';
 import { useCardStyleStore } from '@/store/cardStyleStore';
+import { useCardBackStore, getCardBack } from '@/store/cardBackStore';
 
 interface PlayingCardProps {
   card: Card;
@@ -69,10 +70,18 @@ const SIZE_MAP = {
 
 // 趣味人物：花色 → 人物 emoji 映射
 const FUN_SUIT_EMOJI: Record<string, string> = {
-  spade: '⛹️‍♂️',   // 黑桃
-  heart: '🏋️‍♀️',   // 红桃
-  club: '🤾‍♂️',    // 梅花
-  diamond: '🏌️‍♀️',  // 方片
+  spade: '🎇',   // 黑桃
+  heart: '🎆',   // 红桃
+  club: '🎊',    // 梅花
+  diamond: '🎉',  // 方片
+};
+
+// 象棋风格：花色 → 国际象棋棋子映射（大王 ♔ 小王 ♕ 在 JOKER 分支处理）
+const XIANGQI_SUIT: Record<string, string> = {
+  spade: '♜',   // 黑桃 = 车
+  heart: '♖',   // 红桃 = 车（实心）
+  club: '♟',    // 梅花 = 兵
+  diamond: '♙',  // 方片 = 兵（实心）
 };
 
 export default function PlayingCard({
@@ -81,9 +90,11 @@ export default function PlayingCard({
   const s = SIZE_MAP[size];
   const isLight = useThemeStore((st) => st.theme === 'light');
   const face = useCardStyleStore((st) => st.face);
+  const backStyle = useCardBackStore((st) => st.back);
 
   // 背面
   if (faceDown) {
+    const back = getCardBack(backStyle, isLight);
     return (
       <div
         className={cn(
@@ -92,22 +103,20 @@ export default function PlayingCard({
           isLight ? 'border-amber-700/40' : 'border-gold-600/40',
           className,
         )}
-        style={{
-          background: isLight
-            ? 'linear-gradient(135deg, #b8860b 0%, #8b6914 40%, #6b4f0f 100%)'
-            : 'linear-gradient(135deg, #0f6048 0%, #0a4d3a 40%, #063326 100%)',
-        }}
+        style={{ background: back.background! }}
       >
-        {/* 背面菱形图案 */}
+        {/* 背面中央装饰图案 + 内框线 */}
         <div className="w-full h-full flex items-center justify-center relative">
-          <div className={cn(
-            'absolute inset-2 rounded-md border',
-            isLight ? 'border-amber-300/20' : 'border-gold-500/20',
-          )} />
-          <span className={cn(
-            'text-lg font-card',
-            isLight ? 'text-amber-200/30' : 'text-gold-500/30',
-          )}>♦</span>
+          <div
+            className="absolute inset-2 rounded-md border"
+            style={{ borderColor: back.innerBorderColor }}
+          />
+          <span
+            className="text-lg font-card"
+            style={{ color: back.motifColor, lineHeight: 1 }}
+          >
+            {back.motif}
+          </span>
         </div>
       </div>
     );
@@ -119,10 +128,15 @@ export default function PlayingCard({
   const converted = effRank != null && effRank !== card.rank;
   const rankLabel = converted ? (RANK_TEXT[effRank] ?? '?') : getCardLabel(card);
 
-  // 颜色：深色模式用墨黑/朱红，浅色模式用深棕/深红
-  const rankColor = red
-    ? (isLight ? 'text-red-700' : 'text-vermilion-500')
-    : (isLight ? 'text-amber-950' : 'text-ink-800');
+  // 暗黑风格：玄黑底 + 鎏金/朱砂角标（不随明暗主题变化）
+  const darkFace = face === 'dark';
+
+  // 颜色：暗黑风格红=朱砂、黑=鎏金；普通深色模式墨黑/朱红；浅色模式深棕/深红
+  const rankColor = darkFace
+    ? (red ? 'text-vermilion-400' : 'text-gold-300')
+    : red
+      ? (isLight ? 'text-red-700' : 'text-vermilion-500')
+      : (isLight ? 'text-amber-950' : 'text-ink-800');
 
   return (
     <motion.div
@@ -135,19 +149,27 @@ export default function PlayingCard({
         s.w, s.h, s.radius,
         'relative select-none cursor-pointer overflow-hidden font-card',
         'border',
-        // 背景与边框
-        isLight
-          ? 'bg-gradient-to-b from-amber-50 to-amber-100/80 border-amber-400/60 shadow-md'
-          : 'border-gold-600/40 shadow-card',
+        // 背景与边框（暗黑风格恒为玄黑底+金描边）
+        darkFace
+          ? 'border-gold-500/50 shadow-card'
+          : isLight
+            ? 'bg-gradient-to-b from-amber-50 to-amber-100/80 border-amber-400/60 shadow-md'
+            : 'border-gold-600/40 shadow-card',
         // 选中效果
-        selected && (isLight
-          ? 'ring-2 ring-amber-500 shadow-lg -translate-y-0.5 border-amber-500'
-          : 'ring-2 ring-gold-400 shadow-gold-glow -translate-y-0.5 border-gold-400'),
+        selected && (darkFace
+          ? 'ring-2 ring-gold-400 shadow-gold-glow -translate-y-0.5 border-gold-400'
+          : isLight
+            ? 'ring-2 ring-amber-500 shadow-lg -translate-y-0.5 border-amber-500'
+            : 'ring-2 ring-gold-400 shadow-gold-glow -translate-y-0.5 border-gold-400'),
         // 癞子标记（手牌中的癞子 / 出牌中充当其他点数的癞子）
-        (isLaizi || converted) && (isLight ? 'ring-2 ring-red-500 border-red-500' : 'ring-2 ring-vermilion-400 border-vermilion-400'),
+        (isLaizi || converted) && (isLight && !darkFace ? 'ring-2 ring-red-500 border-red-500' : 'ring-2 ring-vermilion-400 border-vermilion-400'),
         className,
       )}
-      style={!isLight ? { background: 'linear-gradient(180deg, #fdfaf0 0%, #f8f4e8 100%)' } : {}}
+      style={darkFace
+        ? { background: 'linear-gradient(165deg, #262633 0%, #16161f 55%, #0e0e15 100%)' }
+        : !isLight
+          ? { background: 'linear-gradient(180deg, #fdfaf0 0%, #f8f4e8 100%)' }
+          : {}}
     >
 
       {isJoker(card) ? (
@@ -158,8 +180,8 @@ export default function PlayingCard({
     'absolute top-1 left-1 flex flex-col items-center leading-none font-jpq',
     s.jokerText,
     card.rank === 17
-      ? (isLight ? 'text-red-700' : 'text-vermilion-500')
-      : (isLight ? 'text-amber-950' : 'text-ink-800'),
+      ? (darkFace ? 'text-vermilion-400' : isLight ? 'text-red-700' : 'text-vermilion-500')
+      : (darkFace ? 'text-gold-300' : isLight ? 'text-amber-950' : 'text-ink-800'),
   )}>
     {'JOKER'.split('').map((ch, idx) => (
       <span key={idx} className="font-bold">{ch}</span>
@@ -175,13 +197,15 @@ export default function PlayingCard({
       s.jokerEmoji,
       face === 'fun' ? '' : (
         card.rank === 17
-          ? (isLight ? 'text-red-700' : 'text-vermilion-500')
-          : (isLight ? 'text-amber-950' : 'text-ink-800')
+          ? (darkFace ? 'text-vermilion-400' : isLight ? 'text-red-700' : 'text-vermilion-500')
+          : (darkFace ? 'text-gold-300' : isLight ? 'text-amber-950' : 'text-ink-800')
       ),
-    )} style={{ opacity: 0.85, lineHeight: 1 }}>
+    )} style={{ opacity: 0.85, lineHeight: 1, ...(darkFace ? { filter: 'drop-shadow(0 0 5px rgba(212,175,55,0.4))' } : {}) }}>
       {face === 'fun'
-        ? (card.rank === 17 ? '🕺' : '💃')  // 大王🕺 小王💃
-        : (card.rank === 17 ? '♚' : '♛')}
+        ? (card.rank === 17 ? '🎭' : '🎎')  // 大王🎭 小王🎎
+        : face === 'xiangqi'
+          ? (card.rank === 17 ? '♔' : '♕')  // 象棋风格：大王♔ 小王♕
+          : (card.rank === 17 ? '♚' : '♛')}
     </span>
   </div>
 </>
@@ -202,7 +226,8 @@ export default function PlayingCard({
                 size === 'sm' ? 'text-[9px]' : 'text-xs',
                 isLight ? 'text-red-600' : 'text-vermilion-400',
               )}>
-                癞{getCardLabel(card)}
+                {/* 10 在牌面字体中用「=」表示，此标注用正文字体须转回「10」 */}
+                癞{getCardLabel(card) === '=' ? '10' : getCardLabel(card)}
               </span>
             </div>
           )}
@@ -212,7 +237,20 @@ export default function PlayingCard({
             className="absolute flex items-end justify-end pointer-events-none"
             style={{ right: '2px', bottom: '2px' }}
           >
-            {face === 'ring' ? (
+            {face === 'dark' ? (
+              // 暗黑：幽暗徽章 + 鎏金花色微光
+              <div
+                className={cn(s.ringBox, 'rounded-full border flex items-center justify-center border-gold-500/30')}
+                style={{ background: 'rgba(212,175,55,0.08)' }}
+              >
+                <span
+                  className={cn(s.ringSuit, rankColor)}
+                  style={{ opacity: 0.95, lineHeight: 1, filter: 'drop-shadow(0 0 5px rgba(212,175,55,0.45))' }}
+                >
+                  {getSuitLabel(card)}
+                </span>
+              </div>
+            ) : face === 'ring' ? (
               // 圆徽：金环花色徽章
               <div className={cn(
                 s.ringBox, 'rounded-full border-2 flex items-center justify-center',
@@ -245,6 +283,11 @@ export default function PlayingCard({
                   {rankLabel}
                 </span>
               )
+            ) : face === 'xiangqi' ? (
+              // 象棋：花色对应的国际象棋棋子（沿用 rankColor 上色）
+              <span className={cn(s.funEmoji, rankColor)} style={{ opacity: 0.95, lineHeight: 1 }}>
+                {XIANGQI_SUIT[card.suit] ?? getSuitLabel(card)}
+              </span>
             ) : face === 'fun' ? (
               // 趣味人物：花色对应的人物 emoji
               <span className={s.funEmoji} style={{ opacity: 0.95, lineHeight: 1 }}>
