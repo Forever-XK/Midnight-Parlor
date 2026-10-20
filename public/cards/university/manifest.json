@@ -1,0 +1,272 @@
+[
+  {
+    "source": "黑桃_3.png",
+    "output": "spade-3.png",
+    "sha256": "8324a3c88b333a5998b8d48ab35f3699083ed6bb7285c6a88c1eca93e7bab420"
+  },
+  {
+    "source": "黑桃_4.png",
+    "output": "spade-4.png",
+    "sha256": "fee74c24679de004da7ffca4d7aa97f7259d599933cfacf0dababfb9a763ed8f"
+  },
+  {
+    "source": "黑桃_5.png",
+    "output": "spade-5.png",
+    "sha256": "64de452b2cce06153d6263eb9313fdb3ce36e5f3408bf64a8dc5d41866497da6"
+  },
+  {
+    "source": "黑桃_6.png",
+    "output": "spade-6.png",
+    "sha256": "97478814735fe7c6aea43d7d702570886a91490372335494e92d6e963945f185"
+  },
+  {
+    "source": "黑桃_7.png",
+    "output": "spade-7.png",
+    "sha256": "5b4d623a028816029d4dbeffa9719cb1c6d1ad7eaa104c42f53468494185809e"
+  },
+  {
+    "source": "黑桃_8.png",
+    "output": "spade-8.png",
+    "sha256": "342438999615dcbde737d1316ead81fd13739a81a0edac5baed8e26915afe420"
+  },
+  {
+    "source": "黑桃_9.png",
+    "output": "spade-9.png",
+    "sha256": "3796dce9e1795c37cf28b5502f25467d8cc058bbc5cdb837a6358f7f3de9c2b7"
+  },
+  {
+    "source": "黑桃_10.png",
+    "output": "spade-10.png",
+    "sha256": "67d942da501e7396af2d5ef619164b48cee5be583517ddaeae2a3a05e2380203"
+  },
+  {
+    "source": "黑桃_J.png",
+    "output": "spade-11.png",
+    "sha256": "5203b96679179c9f07c3580c52d74a509f4dd9c6ff01a79357f43ee86674acfe"
+  },
+  {
+    "source": "黑桃_Q.png",
+    "output": "spade-12.png",
+    "sha256": "e30bff36fb66bbee1dc5bc36506d725b4a7c8ebb998cfa8f4fdbaa8f1242cf74"
+  },
+  {
+    "source": "黑桃_K.png",
+    "output": "spade-13.png",
+    "sha256": "188976b0818b4a2ce7f10fbfd436b526a33a93db369979cdb2f3f5be25b6f28f"
+  },
+  {
+    "source": "黑桃_A.png",
+    "output": "spade-14.png",
+    "sha256": "37bf8c5dcba7a14c33bece283c76c4bf86a00a603b130295049d8c6d5c7d4de2"
+  },
+  {
+    "source": "黑桃_2.png",
+    "output": "spade-15.png",
+    "sha256": "5b5970f24f0f2cd5a456c18d01cbc950913ae4fde414bb819570d8dd93db06d3"
+  },
+  {
+    "source": "红桃_3.png",
+    "output": "heart-3.png",
+    "sha256": "fcaae2219ed94afa2f4b9ae4c72cb385838783dc433cb9e4ecbce60aecb3ae13"
+  },
+  {
+    "source": "红桃_4.png",
+    "output": "heart-4.png",
+    "sha256": "913b6e9988e48552f68e959636b2b3e59d2072e2ea0984a13b59e0c0e2a47de8"
+  },
+  {
+    "source": "红桃_5.png",
+    "output": "heart-5.png",
+    "sha256": "58936b651abf3b96d0a285b50b0a8ef40696b37276521874376799d36d691d93"
+  },
+  {
+    "source": "红桃_6.png",
+    "output": "heart-6.png",
+    "sha256": "9f58ef5f5146da1998ee74e100cfaa945807c453cc51819048a8eb6843f80267"
+  },
+  {
+    "source": "红桃_7.png",
+    "output": "heart-7.png",
+    "sha256": "44a96b2c57a5a7d93f35d0134e27f1a5bf1ffc032e6e727baa42b0a1877c9727"
+  },
+  {
+    "source": "红桃_8.png",
+    "output": "heart-8.png",
+    "sha256": "93a1dbbbcb939a52edabbb811569ff494e8e845a94a21ef07706b2d5a7ba34bc"
+  },
+  {
+    "source": "红桃_9.png",
+    "output": "heart-9.png",
+    "sha256": "325ff45a3aad740b003ee975d4a4b6668ac0779371997312f2267bb5d27dd5ad"
+  },
+  {
+    "source": "红桃_10.png",
+    "output": "heart-10.png",
+    "sha256": "ba382fdafa372334c78875d4f5a4e4b07182658fd230f8b8e6cbe9bc0aace448"
+  },
+  {
+    "source": "红桃_J.png",
+    "output": "heart-11.png",
+    "sha256": "d9e816fb09dc68b835f55684354f6340def5b01e0cc1fc8cbd88f17e26eded28"
+  },
+  {
+    "source": "红桃_Q.png",
+    "output": "heart-12.png",
+    "sha256": "9d15b8435ac2ee8e9f9e9f5fd5463aae51c5e744295e5197dc7ecfdf45bcbab2"
+  },
+  {
+    "source": "红桃_K.png",
+    "output": "heart-13.png",
+    "sha256": "e3f7bcab05c488ca2cb507d76efb25e011b71dcb7ea599d84bc10819634120b2"
+  },
+  {
+    "source": "红桃_A.png",
+    "output": "heart-14.png",
+    "sha256": "fbf693610dcefc446fde93e21c973a0dd9fbb79dbdd45b5bdd555d2a0286bea0"
+  },
+  {
+    "source": "红桃_2.png",
+    "output": "heart-15.png",
+    "sha256": "6ad70d2a8289275f2daa2486094863198e76ca43ebc894e63b3aef25af76af4d"
+  },
+  {
+    "source": "梅花_3.png",
+    "output": "club-3.png",
+    "sha256": "2c94d7e7e690392aa96f4b4a95419fbc32bbd1a67afc4d2b301b65e02244e05e"
+  },
+  {
+    "source": "梅花_4.png",
+    "output": "club-4.png",
+    "sha256": "5e50173610bd6570ff69adb4da694d20b7ce4a9702af13dc4aa535834db30d19"
+  },
+  {
+    "source": "梅花_5.png",
+    "output": "club-5.png",
+    "sha256": "c2738e777e4f957b09da06b8e4dbd67aad6e984e79630fdc3fba91a3e8c86b0b"
+  },
+  {
+    "source": "梅花_6.png",
+    "output": "club-6.png",
+    "sha256": "07d5886d1f2b348aa5d8c8c926761d36e3a97a50086ffe68ff2cf110d2b14f13"
+  },
+  {
+    "source": "梅花_7.png",
+    "output": "club-7.png",
+    "sha256": "c8d7adfaddd97b453b5f6493a3ec24cab4873e800c5201d3a026fdcaabb29a8f"
+  },
+  {
+    "source": "梅花_8.png",
+    "output": "club-8.png",
+    "sha256": "08d3f4854c6ef6532f8999297abeee90af40854e540dc4518b7bcba98667663f"
+  },
+  {
+    "source": "梅花_9.png",
+    "output": "club-9.png",
+    "sha256": "3a57954df08a47a8dcb8fcab95ae0f515e31f693f64c7fbecf19a13477d1d9d3"
+  },
+  {
+    "source": "梅花_10.png",
+    "output": "club-10.png",
+    "sha256": "f76928febb8f7232efc0339a9bfea2fcc5b0ab9098437456574140f3d297377c"
+  },
+  {
+    "source": "梅花_J.png",
+    "output": "club-11.png",
+    "sha256": "9c3eeafa30cd1d592ee2753ef85fc0a09ec3cb77913cd789519ca3136cb1387f"
+  },
+  {
+    "source": "梅花_Q.png",
+    "output": "club-12.png",
+    "sha256": "5b9a1502d1f42568b629170e91113aea6bb924c9ce671786706dae3c60b8c132"
+  },
+  {
+    "source": "梅花_K.png",
+    "output": "club-13.png",
+    "sha256": "9cae592afff16a4960233b7e5d17abef9b79b38221575e517c6a2d2507db5bfc"
+  },
+  {
+    "source": "梅花_A.png",
+    "output": "club-14.png",
+    "sha256": "ce6739efde6ae1cf536b485f8451f4b8a5448cd59c4eebf8d5dd88e9606cce3d"
+  },
+  {
+    "source": "梅花_2.png",
+    "output": "club-15.png",
+    "sha256": "28c595cafd3a57ecf65591cec18c0be1e829c23a554e1d3f41441bcdd8525a64"
+  },
+  {
+    "source": "方块_3.png",
+    "output": "diamond-3.png",
+    "sha256": "dbc4207a027acee94c73a1ace53438323158124c9f466e449fa28dcf7134c39d"
+  },
+  {
+    "source": "方块_4.png",
+    "output": "diamond-4.png",
+    "sha256": "cda0a22e6c8dbfe70be29c2e0075141d1b73e096015ad1023e695205f923f3a3"
+  },
+  {
+    "source": "方块_5.png",
+    "output": "diamond-5.png",
+    "sha256": "d094404d10c008a0b9854bcebedd8e16d732a63253a4a2cf7a2a3be484946fdc"
+  },
+  {
+    "source": "方块_6.png",
+    "output": "diamond-6.png",
+    "sha256": "43bd4d4aae6cd18789ef9576c725af7c8e72acdf607ba1d04af7ac3cadb7226f"
+  },
+  {
+    "source": "方块_7.png",
+    "output": "diamond-7.png",
+    "sha256": "7106752b250534c19ccfbb09ea71432c6a9f3b47487f2e7ac7da0b74f4dce8a3"
+  },
+  {
+    "source": "方块_8.png",
+    "output": "diamond-8.png",
+    "sha256": "3e90b0a98ff1ccd539dc9dadd9f7c08c1b6c02590106f43b8093deeb5f278195"
+  },
+  {
+    "source": "方块_9.png",
+    "output": "diamond-9.png",
+    "sha256": "fbb30ce322f2484e1a1b43fee665979c4a5c86ae20f9659a4a02efc770e3e3ec"
+  },
+  {
+    "source": "方块_10.png",
+    "output": "diamond-10.png",
+    "sha256": "c802aa5c3053197c75e9602344913c1666b9045fc13fc9aff13bfb81f2871dfa"
+  },
+  {
+    "source": "方块_J.png",
+    "output": "diamond-11.png",
+    "sha256": "b9f7ccd2ea0b4a172832ebe3cfec218790a2b3cc372f855e06755e3ced0d4230"
+  },
+  {
+    "source": "方块_Q.png",
+    "output": "diamond-12.png",
+    "sha256": "98758aa7fa00da25f0467c2870614985c610d3f01fb8ed875e084b22c79fc741"
+  },
+  {
+    "source": "方块_K.png",
+    "output": "diamond-13.png",
+    "sha256": "263bd22b32eb1b2114d191b26bfccdfc988c2cd7a4e80e66acd34232ec578a35"
+  },
+  {
+    "source": "方块_A.png",
+    "output": "diamond-14.png",
+    "sha256": "6c95c5f56621ecb7ed80bf6637783130d3367ece62b13a1fbc962068f80e813e"
+  },
+  {
+    "source": "方块_2.png",
+    "output": "diamond-15.png",
+    "sha256": "d891d98e661d47f38041e9fc18a77ddb97d7944dac7498194d072cdb933a0121"
+  },
+  {
+    "source": "小王.png",
+    "output": "joker-16.png",
+    "sha256": "8f5fbabfe6b7d2e41e526dabbb810b3abef76c1d3bca403b82c64710d74b0779"
+  },
+  {
+    "source": "大王.png",
+    "output": "joker-17.png",
+    "sha256": "41c0f6321c2255a4904329ae9fb3d1f0c2b613088cb21ab0eae2d37ca029e011"
+  }
+]

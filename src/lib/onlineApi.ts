@@ -5,15 +5,19 @@ import type { Card, Difficulty, GameMode, GameState, Seat, Snapshot } from '@sha
 const api = axios.create({ baseURL: '/api', timeout: 15000 });
 
 // ===== 身份持久化 =====
+// clientId 存 sessionStorage 而非 localStorage：同一浏览器开多个标签页/窗口时
+// 每个标签页是独立玩家（localStorage 全窗口共享会导致第二个窗口"加入"时
+// 被后端识别为房主本人而不分配座位，房主也就永远看不到加入的玩家）。
+// 同一标签页刷新后 cid 保留，可回到进行中的对局。
 const CID_KEY = 'ddz_client_id';
 const NAME_KEY = 'ddz_player_name';
 
 export function getClientId(): string {
-  let id = localStorage.getItem(CID_KEY);
+  let id = sessionStorage.getItem(CID_KEY);
   if (!id) {
     // 简单 UUID（浏览器无安全要求）
     id = (`${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 10)}`);
-    localStorage.setItem(CID_KEY, id);
+    sessionStorage.setItem(CID_KEY, id);
   }
   return id;
 }

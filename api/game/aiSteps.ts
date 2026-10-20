@@ -8,6 +8,7 @@ import { decideBid, decidePlay, type AIContext } from './aiEngine';
 import { identifyPlay, identifyPlayWithLaizi, canBeat, type IdentifyOptions } from './rules';
 import { sortCards, pickDistinctLaiziRank } from './cards';
 import { getGame, saveGame, toPublicState, type InternalGame } from './store';
+import { redealGame } from './redeal';
 
 // ============================================================
 // 以下是从 gameService.ts 同步复制的最小实现（内部函数无法跨文件导出）
@@ -17,6 +18,7 @@ import { getGame, saveGame, toPublicState, type InternalGame } from './store';
 function makeAIContext(game: InternalGame, seat: Seat): AIContext {
   const laiziRanks = laiziRanksOf(game);
   return {
+    mode: game.mode,
     hand: game.hands[seat],
     seat,
     role: game.roles[seat]!,
@@ -32,6 +34,7 @@ function makeAIContext(game: InternalGame, seat: Seat): AIContext {
     cardTracker: game.cardTracker,
     laiziRanks,
     multiBomb: multiBombOf(game),
+    passCount: game.passCount,
   };
 }
 
@@ -72,6 +75,7 @@ function updateCardTracker(game: InternalGame, cards: Card[]): void {
 }
 
 function assignLandlord(game: InternalGame, seat: Seat, bid: number): void {
+  game.completedBids = game.bidState?.bids.map(result => ({ ...result })) ?? [];
   game.landlordSeat = seat;
   game.roles[seat] = 'landlord';
   for (let i = 0; i < 3; i++) {
@@ -110,14 +114,8 @@ function processBid(game: InternalGame, seat: Seat, bid: number): void {
 function finishBidding(game: InternalGame): void {
   if (!game.bidState) return;
   if (game.bidState.highestSeat === null || game.bidState.highestBid === 0) {
-    if (game.bidRedealCount < 1) {
-      // 不直接重发牌；为避免 WS 流程复杂化，强制指定 startSeat 地主 1 分（与 gameService 不同但满足在线节奏）
-      assignLandlord(game, game.bidState.startSeat, 1);
-      game.phase = 'playing';
-      game.currentSeat = game.landlordSeat!;
-      return;
-    }
-    assignLandlord(game, game.bidState.startSeat, 1);
+    redealGame(game);
+    return;
   } else {
     assignLandlord(game, game.bidState.highestSeat!, game.bidState.highestBid);
   }
@@ -153,6 +151,7 @@ function executePlay(game: InternalGame, seat: Seat, play: Play): void {
   game.lastPlay = { seat, play };
   game.lastValidPlay = { seat, play };
   game.seatLastPlays[seat] = play;
+  game.seatPassed[seat] = false;
   game.passCount = 0;
   game.playCounts[seat]++;
   updateCardTracker(game, play.cards);
@@ -165,12 +164,14 @@ function executePlay(game: InternalGame, seat: Seat, play: Play): void {
 function executePass(game: InternalGame, seat: Seat): void {
   game.lastPlay = { seat, play: { type: 'single', cards: [], mainRank: 0 as any, length: 0 } };
   game.passCount++;
+  game.seatPassed[seat] = true;
   if (game.passCount >= 2 && game.lastValidPlay) {
     game.currentSeat = game.lastValidPlay.seat;
     game.lastValidPlay = null;
     game.lastPlay = null;
     game.passCount = 0;
     game.seatLastPlays = [null, null, null];
+    game.seatPassed = [false, false, false];
   } else {
     game.currentSeat = nextSeat(seat);
   }
@@ -199,6 +200,7 @@ export function stepAIBidOnceByGameId(gameId: string): StepResult & { viewerSeat
 }
 
 function stepAIMenzhuaOnceInternal(game: InternalGame, viewerSeat: Seat): StepResult & { viewerSeat?: Seat } {
+  const before = toPublicState(game, viewerSeat);
   const seat = game.currentSeat;
   if (isHumanSeat(game, seat)) return { done: true, snapshots: [] };
   if (seat !== game.mingCardSeat) return { done: true, snapshots: [] };
@@ -235,14 +237,14 @@ function stepAIMenzhuaOnceInternal(game: InternalGame, viewerSeat: Seat): StepRe
     };
   }
 
-  const event: AIEvent = { seat, action: 'bid', value: choice === 'menzhua' ? 3 : 0, delay: bidDelay() };
+  const event: AIEvent = { seat, action: choice === 'kanpai' ? 'reveal' : 'bid', value: choice === 'menzhua' ? 3 : 0, delay: bidDelay() };
   const snapshots: Snapshot[] = [
-    { state: toPublicState(game, viewerSeat), event: { seat: game.currentSeat, action: 'turn', delay: 200 } },
+    { state: before, event: { seat, action: 'turn', delay: 200 } },
     { state: toPublicState(game, viewerSeat), event },
   ];
 
   if (choice === 'menzhua' && game.phase === 'playing') {
-    snapshots.unshift({ state: toPublicState(game, viewerSeat), event: { seat: game.currentSeat, action: 'turn', delay: 600 } });
+    snapshots.push({ state: toPublicState(game, viewerSeat), event: { seat: game.currentSeat, action: (game.phase as string) === 'playing' ? 'turn' : 'redeal', delay: 600 } });
   }
 
   saveGame(game);
@@ -275,10 +277,10 @@ function stepAIBidOnceInternal(game: InternalGame, viewerSeat: Seat): StepResult
   if (game.bidState && (game.bidState.highestBid === 3 || game.bidState.bidCount >= 3)) {
     finishBidding(game);
     // 出牌前追加一条“地主底牌翻开”快照
-    snapshots.unshift({ state: toPublicState(game, viewerSeat), event: { seat: game.currentSeat, action: 'turn', delay: 600 } });
+    snapshots.push({ state: toPublicState(game, viewerSeat), event: { seat: game.currentSeat, action: (game.phase as string) === 'playing' ? 'turn' : 'redeal', delay: 600 } });
     saveGame(game);
     return {
-      done: isHumanSeat(game, game.currentSeat) || (game.phase as string) !== 'playing',
+      done: isHumanSeat(game, game.currentSeat),
       snapshots,
       nextDelayMs: 700,
       viewerSeat,

@@ -3,15 +3,18 @@ import { Router, type Request, type Response } from 'express';
 import {
   createGame, playerBid, playerPlay, playerPass, playerHint, getState, playerMenzhua, playerAnalyze,
 } from '../game/gameService';
-import { getStats, recordGame } from '../game/statsStore';
-import type { Card, Difficulty, GameMode, Role } from '@shared/types';
+import { getStats, getLeaderboard, registerUser } from '../game/statsStore';
+import { recordFinishedGame } from '../game/gameStats';
+import { sortLeaderboard } from '@shared/leaderboard';
+import type { Card, Difficulty, GameMode, LeaderboardSort } from '@shared/types';
+import { isGameMode } from '@shared/gameModes';
 
 const router = Router();
 
 // 创建新对局（playerName 为玩家用户名，战绩按用户名分档）
 router.post('/game/create', (req: Request, res: Response) => {
   const { mode, difficulty, playerName } = req.body as { mode: GameMode; difficulty: Difficulty; playerName?: string };
-  if (!['classic', 'unshuffled', 'laizi', 'tiandilaizi', 'menzhua'].includes(mode)) {
+  if (!isGameMode(mode)) {
     res.status(400).json({ error: '无效的模式' });
     return;
   }
@@ -20,6 +23,7 @@ router.post('/game/create', (req: Request, res: Response) => {
     return;
   }
   const result = createGame(mode, difficulty, playerName);
+  registerUser(result.state.playerName ?? '玩家');
   res.json(result);
 });
 
@@ -36,7 +40,7 @@ router.post('/game/:id/bid', (req: Request, res: Response) => {
     res.status(400).json({ error: result.error, state: result.state, snapshots: result.snapshots });
     return;
   }
-  maybeRecordStats(result.state, res);
+  recordFinishedGame(id);
   res.json({ state: result.state, snapshots: result.snapshots });
 });
 
@@ -54,7 +58,7 @@ router.post('/game/:id/menzhua', (req: Request, res: Response) => {
     res.status(400).json({ error: result.error, state: result.state, snapshots: result.snapshots });
     return;
   }
-  maybeRecordStats(result.state, res);
+  recordFinishedGame(id);
   res.json({ state: result.state, snapshots: result.snapshots });
 });
 
@@ -74,7 +78,7 @@ router.post('/game/:id/play', (req: Request, res: Response) => {
     res.status(400).json({ error: result.error, state: result.state, snapshots: result.snapshots });
     return;
   }
-  maybeRecordStats(result.state, res);
+  recordFinishedGame(id);
   res.json({ state: result.state, snapshots: result.snapshots });
 });
 
@@ -102,7 +106,7 @@ router.post('/game/:id/pass', (req: Request, res: Response) => {
     res.status(400).json({ error: result.error, state: result.state, snapshots: result.snapshots });
     return;
   }
-  maybeRecordStats(result.state, res);
+  recordFinishedGame(id);
   res.json({ state: result.state, snapshots: result.snapshots });
 });
 
@@ -130,21 +134,25 @@ router.get('/stats', (req: Request, res: Response) => {
   res.json(getStats(user));
 });
 
-// 记录战绩（仅当游戏结束时，且玩家是参与者；按对局的 playerName 归属用户）
-function maybeRecordStats(state: any, res: Response): void {
-  if (state && state.phase === 'finished' && state.result) {
-    const playerRole: Role = state.players[0].role;
-    const playerWon =
-      (playerRole === 'landlord' && state.result.winner === 'landlord') ||
-      (playerRole === 'peasant' && state.result.winner === 'peasant');
-    const playerScore = state.result.scores[0];
-    // 记录到响应头（避免重复记录）
-    const recorded = res.getHeader('X-Stats-Recorded');
-    if (!recorded) {
-      res.setHeader('X-Stats-Recorded', '1');
-      recordGame(state.playerName, playerRole, playerWon, playerScore);
-    }
+router.post('/users/register', (req: Request, res: Response) => {
+  const username: unknown = req.body?.username;
+  if (typeof username !== 'string' || !username.trim() || username.trim().length > 12) {
+    res.status(400).json({ error: '昵称需为 1–12 个字符' });
+    return;
   }
-}
+  registerUser(username);
+  res.json({ ok: true });
+});
+
+router.get('/leaderboard', (req: Request, res: Response) => {
+  const sort = req.query.sort ?? 'wins';
+  const order = req.query.order ?? 'desc';
+  if (!['gamesPlayed', 'wins', 'winRate'].includes(sort as string) || !['asc', 'desc'].includes(order as string)) {
+    res.status(400).json({ error: '无效的排序方式' });
+    return;
+  }
+  res.setHeader('Cache-Control', 'no-store');
+  res.json({ entries: sortLeaderboard(getLeaderboard(), sort as LeaderboardSort, order as 'asc' | 'desc') });
+});
 
 export default router;

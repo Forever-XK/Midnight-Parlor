@@ -1,7 +1,7 @@
 // 前端 API 通信层
 import axios from 'axios';
 import type {
-  Card, CreateGameResponse, Difficulty, GameMode, GameState, Snapshot, Stats,
+  Card, CreateGameResponse, Difficulty, GameMode, GameState, Snapshot, Stats, LeaderboardEntry,
 } from '@shared/types';
 
 const api = axios.create({
@@ -68,4 +68,13 @@ export async function menzhuaGame(
 export async function getStats(user?: string): Promise<Stats> {
   const { data } = await api.get('/stats', { params: user ? { user } : undefined });
   return data;
+}
+
+export async function registerUser(username: string): Promise<void> {
+  await api.post('/users/register', { username });
+}
+
+export async function getLeaderboard(): Promise<LeaderboardEntry[]> {
+  const { data } = await api.get<{ entries: LeaderboardEntry[] }>('/leaderboard');
+  return data.entries;
 }

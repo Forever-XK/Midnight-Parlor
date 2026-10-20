@@ -3,11 +3,12 @@ import type { GameState, GameMode } from '@shared/types';
 import { findBeatingPlays, findBeatingPlaysWithLaizi } from './rules';
 
 export interface InternalGame {
+  statsRecorded?: boolean;
   gameId: string;
   mode: GameMode;
   difficulty: 'casual' | 'standard' | 'master';
-  laiziRank: number | null; // 癞子点数（仅癞子模式）
-  tianLaiziRank: number | null; // 天癞子（天地癞子模式，发牌后抽取）
+  laiziRank: number | null; // 单癞子点数（癞子/癞子不洗牌模式）
+  tianLaiziRank: number | null; // 天癞子（天地癞子模式，发牌前抽取）
   diLaiziRank: number | null;  // 地癞子（天地癞子模式，确定地主后抽取）
   phase: 'dealing' | 'menzhuaChoice' | 'bidding' | 'playing' | 'finished';
   currentSeat: 0 | 1 | 2;
@@ -19,8 +20,10 @@ export interface InternalGame {
   lastPlay: { seat: 0 | 1 | 2; play: Play } | null;
   lastValidPlay: { seat: 0 | 1 | 2; play: Play } | null;
   seatLastPlays: (Play | null)[]; // 每个座位最近一次出的牌（不含 pass），展示在玩家面前
+  seatPassed: boolean[]; // 本轮各座位最近动作是否为「不出」（新一轮清空）
   passCount: number;
   bidState: import('@shared/types').BidState | null;
+  completedBids?: import('@shared/types').BidState['bids'];
   multiplier: import('@shared/types').Multiplier;
   cardTracker: Map<number, number>;
   playCounts: number[]; // 各座位成功出牌次数（春天判定）
@@ -104,6 +107,7 @@ export function toPublicState(game: InternalGame, viewerSeat = 0): GameState {
 
   return {
     gameId: game.gameId,
+    dealNumber: game.bidRedealCount,
     mode: game.mode,
     difficulty: game.difficulty,
     playerName: game.playerNames[viewerSeat] ?? undefined,
@@ -132,8 +136,10 @@ export function toPublicState(game: InternalGame, viewerSeat = 0): GameState {
     lastPlay: game.lastPlay,
     lastValidPlay: game.lastValidPlay,
     seatLastPlays: game.seatLastPlays.map((p) => (p ? { ...p, cards: [...p.cards] } : null)),
+    seatPassed: [...game.seatPassed],
     passCount: game.passCount,
     bidState: game.bidState ? { ...game.bidState, bids: [...game.bidState.bids] } : null,
+    bidResults: (game.bidState?.bids ?? game.completedBids ?? []).map(bid => ({ ...bid })),
     multiplier: { ...game.multiplier },
     result: game.result,
     remainingCards,

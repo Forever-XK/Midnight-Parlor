@@ -2,7 +2,7 @@
 import fs from 'fs';
 import path from 'path';
 import { fileURLToPath } from 'url';
-import type { Stats, Role } from '@shared/types';
+import type { Stats, Role, LeaderboardEntry } from '@shared/types';
 
 // esbuild CJS 打包时 import.meta.url 为空 → 回退 cwd（打包场景由 DDZ_DATA_DIR 覆盖）
 const __dirname = (() => {
@@ -35,7 +35,7 @@ interface StatsFile {
 }
 
 function defaultFile(): StatsFile {
-  return { users: {} };
+  return { users: Object.create(null) };
 }
 
 /** 读取整个文件（旧版顶层 Stats 格式自动迁移为多用户格式） */
@@ -46,7 +46,7 @@ function readFile(): StatsFile {
     if (raw && typeof raw === 'object' && !Array.isArray(raw)) {
       if (raw.users && typeof raw.users === 'object') {
         // 新格式
-        const users: Record<string, Stats> = {};
+        const users: Record<string, Stats> = Object.create(null);
         for (const [name, st] of Object.entries(raw.users)) {
           users[name] = { ...DEFAULT_STATS, ...(st as object) };
         }
@@ -86,6 +86,25 @@ export function getStats(user?: string): Stats {
   const saved = users[normalizeUser(user)];
   // history 深拷贝，避免共享模块级 DEFAULT_STATS 的数组引用
   return { ...DEFAULT_STATS, ...saved, history: [...(saved?.history ?? [])] };
+}
+
+/** 保存昵称即建立用户档案，已有战绩保持不变。 */
+export function registerUser(user: string): void {
+  const name = normalizeUser(user);
+  const file = readFile();
+  if (Object.prototype.hasOwnProperty.call(file.users, name)) return;
+  file.users[name] = { ...DEFAULT_STATS, history: [] };
+  writeFile(file);
+}
+
+/** 仅公开排行榜需要的汇总数据，不暴露对局历史。 */
+export function getLeaderboard(): LeaderboardEntry[] {
+  return Object.entries(readFile().users).map(([username, stats]) => ({
+    username,
+    gamesPlayed: stats.gamesPlayed,
+    wins: stats.wins,
+    winRate: stats.gamesPlayed > 0 ? stats.wins / stats.gamesPlayed : 0,
+  }));
 }
 
 /** 记录一局战绩到指定用户名下 */

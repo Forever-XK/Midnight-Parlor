@@ -1,5 +1,7 @@
 // 联机房间管理 —— 创建/加入/开始对局，AI 补齐空座位
 import type { Card, Difficulty, GameMode, GameState, Seat, Snapshot } from '@shared/types';
+import { registerUser } from '../game/statsStore';
+import { recordFinishedGame } from '../game/gameStats';
 import {
   createOnlineGame, playerBid, playerPlay, playerPass, playerHint, getState, playerMenzhua, playerAnalyze, type PlayChoice,
 } from '../game/gameService';
@@ -93,6 +95,7 @@ export function createRoom(clientId: string, name: string, mode: GameMode, diffi
     createdAt: Date.now(),
   };
   room.players[0] = { clientId, name, seat: 0, isHost: true };
+  registerUser(name);
   saveRoom(room);
   return { room };
 }
@@ -105,6 +108,7 @@ export function joinRoom(roomId: string, clientId: string, name: string): { room
   const free = room.players.findIndex((p) => p === null);
   if (free === -1) return { error: '房间已满' };
   room.players[free] = { clientId, name, seat: free as Seat, isHost: false };
+  registerUser(name);
   return { room };
 }
 
@@ -196,6 +200,7 @@ function runOnSeat(roomId: string, clientId: string, fn: (gameId: string, seat: 
   const seat = seatOf(room, clientId);
   if (seat === null) return { state: null, error: '你不在该房间中' };
   const r = fn(room.gameId, seat);
+  recordFinishedGame(room.gameId);
   // 无论成功或失败，同步最新状态到 room.state（失败时也可能返回最新 state）
   if (r.state) room.state = r.state;
   if (r.snapshots && r.snapshots.length > 0) {

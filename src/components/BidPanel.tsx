@@ -5,9 +5,9 @@ import { useThemeStore } from '@/store/themeStore';
 import { cn } from '@/lib/utils';
 
 export default function BidPanel() {
-  const { state, mySeat, doBid, loading, isPlayingSnapshots } = useGameStore();
+  const { state, mySeat, doBid, loading, isPlayingSnapshots, isDealing, isRevealingMenzhua } = useGameStore();
   const isLight = useThemeStore(s => s.theme === 'light');
-  if (!state || state.phase !== 'bidding' || state.currentSeat !== mySeat) return null;
+  if (!state || state.phase !== 'bidding' || state.currentSeat !== mySeat || isDealing || isRevealingMenzhua) return null;
 
   const highest = state.bidState?.highestBid ?? 0;
 
@@ -38,6 +38,7 @@ export default function BidPanel() {
             onClick={() => doBid(b.bid)}
             className={cn(
               'inline-flex items-center justify-center gap-2 rounded-xl px-6 py-3 font-display text-lg transition-all duration-200 border',
+              b.bid === 0 && 'btn-ghost',
               b.bid === 0 ? (isLight
                 ? 'bg-white/70 border-amber-700/30 text-amber-800 hover:bg-white/90'
                 : 'bg-ink-600/40 border-gold-600/40 text-gold-400 hover:border-gold-500 hover:text-gold-300') :
@@ -58,9 +59,9 @@ export default function BidPanel() {
 }
 
 export function MenzhuaChoicePanel() {
-  const { state, mySeat, doMenzhua, loading, isPlayingSnapshots } = useGameStore();
+  const { state, mySeat, doMenzhua, loading, isPlayingSnapshots, isDealing, isRevealingMenzhua } = useGameStore();
   const isLight = useThemeStore(s => s.theme === 'light');
-  if (!state || state.phase !== 'menzhuaChoice' || state.currentSeat !== mySeat) return null;
+  if (!state || state.phase !== 'menzhuaChoice' || state.currentSeat !== mySeat || isDealing || isRevealingMenzhua) return null;
 
   const disabled = loading || isPlayingSnapshots;
 
@@ -95,7 +96,7 @@ export function MenzhuaChoicePanel() {
             disabled && 'opacity-30 cursor-not-allowed',
           )}
         >
-          看牌 再叫分
+          不叫 · 明牌后叫分
         </button>
       </div>
     </motion.div>

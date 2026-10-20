@@ -1,617 +1,84 @@
-// 大厅首页
 import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { motion, AnimatePresence } from 'framer-motion';
-import { Swords, Shuffle, Dices, Trophy, BookOpen, ChevronDown, Volume2, VolumeX, Sun, Moon, Globe, Zap, Settings, ScrollText, User } from 'lucide-react';
+import { ArrowRight, BookOpen, Check, ChevronRight, Globe, Settings, Trophy, Volume2, VolumeX, X } from 'lucide-react';
 import { useGameStore } from '@/store/gameStore';
-import { useThemeStore } from '@/store/themeStore';
 import { useUserStore } from '@/store/userStore';
-import FallingCards from '@/components/FallingCards';
 import SettingsPanel from '@/components/SettingsPanel';
 import ChangelogPanel from '@/components/ChangelogPanel';
+import LeaderboardPanel from '@/components/LeaderboardPanel';
+import { registerUser } from '@/lib/api';
 import { sound } from '@/lib/soundManager';
-import { cn } from '@/lib/utils';
-import type { Difficulty, GameMode } from '@shared/types';
-
-const MODES: { id: GameMode; name: string; desc: string; icon: typeof Swords }[] = [
-  { id: 'classic', name: '经典模式', desc: '叫分争夺地主，策略博弈', icon: Swords },
-  { id: 'unshuffled', name: '不洗牌', desc: '大牌集中，王炸乱舞', icon: Shuffle },
-  { id: 'laizi', name: '癞子模式', desc: '随机癞子，百搭变幻', icon: Dices },
-  { id: 'tiandilaizi', name: '天地癞子', desc: '天癞+地癞，多多益炸', icon: Swords },
-  { id: 'menzhua', name: '闷抓斗地主', desc: '暗牌明张，闷抓翻倍', icon: Zap },
-];
-
-const DIFFICULTIES: { id: Difficulty; name: string; desc: string }[] = [
-  { id: 'casual', name: '休闲', desc: '轻松随意' },
-  { id: 'standard', name: '标准', desc: '均衡挑战' },
-  { id: 'master', name: '高手', desc: '记牌大师' },
-];
-
-// 遮罩只在应用会话内首次进入时展示一次（返回大厅不再重复）
-let splashShown = false;
+import { DPH_THEME, DPH_MODES, DPH_DIFFICULTIES } from '@/config/dphTheme';
 
 export default function Home() {
   const navigate = useNavigate();
-  const { mode, difficulty, setMode, setDifficulty, startGame, loading, stats, loadStats, soundEnabled, toggleSound } = useGameStore();
-  const { theme, toggleTheme } = useThemeStore();
-  const { username, setProfile } = useUserStore();
-  const [showRules, setShowRules] = useState(false);
-  const [showSettings, setShowSettings] = useState(false);
-  const [showChangelog, setShowChangelog] = useState(false);
-  const [showSplash, setShowSplash] = useState(!splashShown);
-  // 首次进入：设置用户名与性别（已有用户名则直接点击进入）
-  const needProfile = !username;
-  const [inputName, setInputName] = useState('');
-  const [inputGender, setInputGender] = useState<'male' | 'female'>('male');
-
-  useEffect(() => { loadStats(); }, [loadStats]);
-
-  // 主界面背景音乐（首次进入与从对局返回均切换回 Welcome）
-  useEffect(() => { sound.playBgm('Welcome'); }, []);
-
-  // 点击遮罩：在用户手势下解锁并播放 BGM，再进入大厅（首次进入需先填写用户名/性别）
-  const handleEnter = () => {
-    if (needProfile) {
-      const name = inputName.trim();
-      if (!name) return; // 未填用户名不允许进入
-      setProfile(name, inputGender);
-    }
-    splashShown = true;
+  const { mode, difficulty, setMode, setDifficulty, startGame, loading, stats, loadStats, soundEnabled, toggleSound, error } = useGameStore();
+  const { username, gender, setProfile } = useUserStore();
+  const [panel, setPanel] = useState<'rules' | 'stats' | 'profile' | null>(null);
+  const [settings, setSettings] = useState(false);
+  const [changelog, setChangelog] = useState(false);
+  const [leaderboard, setLeaderboard] = useState(false);
+  const [profileSaving, setProfileSaving] = useState(false);
+  const [profileError, setProfileError] = useState('');
+  const [name, setName] = useState(username);
+  const [voice, setVoice] = useState(gender);
+  const current = DPH_MODES.find(item => item.id === mode) ?? DPH_MODES[0];
+  useEffect(() => { loadStats(); sound.playBgm('Welcome'); }, [loadStats]);
+  useEffect(() => { if (username) void registerUser(username).catch(() => {}); }, [username]);
+  const enter = async () => {
     sound.ensureBgm('Welcome');
-    setShowSplash(false);
-  };
-
-  const handleStart = async () => {
+    if (!useUserStore.getState().username) { setPanel('profile'); return; }
     await startGame();
-    navigate('/game');
+    if (!useGameStore.getState().error && useGameStore.getState().state) navigate('/game');
   };
-
-  const winRate = stats && stats.gamesPlayed > 0
-    ? Math.round((stats.wins / stats.gamesPlayed) * 100)
-    : 0;
-
-  const isLight = theme === 'light';
-
-  return (
-    <div className={cn(
-      'min-h-screen relative overflow-hidden',
-      isLight ? 'bg-[#f5ecd7]' : 'bg-ink-900',
-    )}>
-      {/* 背景渐变 */}
-      <div
-        className="absolute inset-0"
-        style={isLight ? {
-          background: 'radial-gradient(ellipse at 50% 0%, #f0dfb0 0%, #e8d4a8 40%, #ddc690 100%)',
-        } : {
-          background: 'radial-gradient(ellipse at 50% 0%, #13293d 0%, #0d1b2a 40%, #0a0f1a 100%)',
-        }}
-      />
-      <FallingCards />
-
-      {/* 顶部导航 */}
-      <header className="relative z-10 flex items-center justify-between px-6 py-4">
-        <div className="flex items-center gap-2">
-          <div className={cn(
-            'w-8 h-8 rounded-lg flex items-center justify-center font-main text-sm',
-            isLight
-              ? 'bg-gradient-to-br from-amber-500 to-amber-700 text-white'
-              : 'bg-gradient-to-br from-gold-300 to-gold-600 text-ink-900',
-          )}>
-            牌
-          </div>
-          <span className={cn(
-            'font-main text-lg',
-            isLight ? 'text-amber-800' : 'text-gold-400',
-          )}>斗地主</span>
-        </div>
-        <div className="flex items-center gap-2">
-          <button onClick={() => setShowSettings(true)} title="游戏设置" className={cn(
-            'inline-flex items-center justify-center rounded-xl px-3 py-2 border transition-all duration-200',
-            isLight
-              ? 'border-amber-700/30 text-amber-800 bg-white/50 hover:bg-amber-100/50'
-              : 'border-gold-600/40 text-gold-400 bg-ink-600/40 hover:border-gold-500 hover:text-gold-300',
-          )}>
-            <Settings className="w-4 h-4" />
-          </button>
-          <button onClick={toggleTheme} className={cn(
-            'inline-flex items-center justify-center rounded-xl px-3 py-2 border transition-all duration-200',
-            isLight
-              ? 'border-amber-700/30 text-amber-800 bg-white/50 hover:bg-amber-100/50'
-              : 'border-gold-600/40 text-gold-400 bg-ink-600/40 hover:border-gold-500 hover:text-gold-300',
-          )}>
-            {isLight ? <Moon className="w-4 h-4" /> : <Sun className="w-4 h-4" />}
-          </button>
-          <button onClick={toggleSound} className={cn(
-            'inline-flex items-center justify-center rounded-xl px-3 py-2 border transition-all duration-200',
-            isLight
-              ? 'border-amber-700/30 text-amber-800 bg-white/50 hover:bg-amber-100/50'
-              : 'border-gold-600/40 text-gold-400 bg-ink-600/40 hover:border-gold-500 hover:text-gold-300',
-          )}>
-            {soundEnabled ? <Volume2 className="w-4 h-4" /> : <VolumeX className="w-4 h-4" />}
-          </button>
-        </div>
-      </header>
-
-      {/* 主内容 */}
-      <main className="relative z-10 flex flex-col items-center px-6 pt-8 pb-12 max-w-4xl mx-auto">
-        {/* Hero 标题 */}
-        <motion.div
-          initial={{ opacity: 0, y: 30 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ duration: 0.6 }}
-          className="text-center mb-8"
-        >
-          <h1 className={cn(
-            'font-main text-7xl md:text-8xl mb-2 leading-none',
-            isLight
-              ? 'text-amber-800 drop-shadow-[0_2px_8px_rgba(139,105,20,0.3)]'
-              : 'text-gold-gradient text-shadow-gold',
-          )}>
-            斗地主
-          </h1>
-          <p className={cn(
-            'font-main text-sm tracking-[0.4em] uppercase',
-            isLight ? 'text-amber-700/60' : 'text-ivory/50',
-          )}>
-            {isLight ? 'Classic · Card Game' : 'Midnight · Parlor'}
-          </p>
-        </motion.div>
-
-        {/* 模式选择 */}
-        <motion.div
-          initial={{ opacity: 0, y: 20 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ delay: 0.2, duration: 0.5 }}
-          className="w-full mb-6"
-        >
-          <div className={cn(
-            'text-xs font-main mb-2 tracking-wider',
-            isLight ? 'text-amber-800/60' : 'text-gold-500/70',
-          )}>选择模式</div>
-          <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-            {MODES.map((m) => (
-              <button
-                key={m.id}
-                onClick={() => setMode(m.id)}
-                className={cn(
-                  'p-4 flex items-start gap-3 transition-all duration-200 text-left rounded-2xl border',
-                  isLight ? (
-                    mode === m.id
-                      ? 'bg-white/90 border-amber-500 shadow-[0_0_16px_rgba(180,130,20,0.3)] scale-[1.02]'
-                      : 'bg-white/60 border-amber-700/20 hover:border-amber-600/40 hover:bg-white/80'
-                  ) : (
-                    mode === m.id
-                      ? 'glass-panel border-gold-400 shadow-gold-glow scale-[1.02]'
-                      : 'glass-panel hover:border-gold-500/40'
-                  ),
-                )}
-              >
-                <div className={cn(
-                  'w-10 h-10 rounded-lg flex items-center justify-center shrink-0',
-                  isLight ? (
-                    mode === m.id ? 'bg-amber-500/20 text-amber-700' : 'bg-amber-900/10 text-amber-800/50'
-                  ) : (
-                    mode === m.id ? 'bg-gold-500/20 text-gold-300' : 'bg-ink-600/50 text-ivory/40'
-                  ),
-                )}>
-                  <m.icon className="w-5 h-5" />
-                </div>
-                <div>
-                  <div className={cn(
-                    'font-main text-lg',
-                    isLight ? (mode === m.id ? 'text-amber-800' : 'text-amber-900/70') : (mode === m.id ? 'text-gold-300' : 'text-ivory/80'),
-                  )}>
-                    {m.name}
-                  </div>
-                  <div className={cn(
-                  'text-xs',
-                  isLight ? 'text-amber-800/50' : 'text-ivory/40',
-                )}>{m.desc}</div>
-                </div>
-              </button>
-            ))}
-            {/* 游戏设置卡片（模式区末尾，闷抓斗地主之后） */}
-            <button
-              onClick={() => setShowSettings(true)}
-              className={cn(
-                'p-4 flex items-start gap-3 transition-all duration-200 text-left rounded-2xl border border-dashed',
-                isLight
-                  ? 'bg-white/40 border-amber-700/30 hover:border-amber-600/50 hover:bg-white/70'
-                  : 'bg-ink-700/30 border-gold-600/30 hover:border-gold-500/50 hover:bg-ink-600/40',
-              )}
-            >
-              <div className={cn(
-                'w-10 h-10 rounded-lg flex items-center justify-center shrink-0',
-                isLight ? 'bg-amber-900/10 text-amber-800/60' : 'bg-ink-600/50 text-ivory/40',
-              )}>
-                <Settings className="w-5 h-5" />
-              </div>
-              <div>
-                <div className={cn(
-                  'font-main text-lg',
-                  isLight ? 'text-amber-900/70' : 'text-ivory/80',
-                )}>游戏设置</div>
-                <div className={cn(
-                  'text-xs',
-                  isLight ? 'text-amber-800/50' : 'text-ivory/40',
-                )}>牌面 · 桌布 · 音乐包</div>
-              </div>
-            </button>
-            {/* 更新日志卡片（设置之后） */}
-            <button
-              onClick={() => setShowChangelog(true)}
-              className={cn(
-                'p-4 flex items-start gap-3 transition-all duration-200 text-left rounded-2xl border border-dashed',
-                isLight
-                  ? 'bg-white/40 border-amber-700/30 hover:border-amber-600/50 hover:bg-white/70'
-                  : 'bg-ink-700/30 border-gold-600/30 hover:border-gold-500/50 hover:bg-ink-600/40',
-              )}
-            >
-              <div className={cn(
-                'w-10 h-10 rounded-lg flex items-center justify-center shrink-0',
-                isLight ? 'bg-amber-900/10 text-amber-800/60' : 'bg-ink-600/50 text-ivory/40',
-              )}>
-                <ScrollText className="w-5 h-5" />
-              </div>
-              <div>
-                <div className={cn(
-                  'font-main text-lg',
-                  isLight ? 'text-amber-900/70' : 'text-ivory/80',
-                )}>更新日志</div>
-                <div className={cn(
-                  'text-xs',
-                  isLight ? 'text-amber-800/50' : 'text-ivory/40',
-                )}>当前 v1.4.0 · 个性化定制</div>
-              </div>
-            </button>
-          </div>
-        </motion.div>
-
-        {/* 难度选择 */}
-        <motion.div
-          initial={{ opacity: 0, y: 20 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ delay: 0.3, duration: 0.5 }}
-          className="w-full mb-8"
-        >
-          <div className={cn(
-            'text-xs font-main mb-2 tracking-wider',
-            isLight ? 'text-amber-800/60' : 'text-gold-500/70',
-          )}>AI 难度</div>
-          <div className="grid grid-cols-3 gap-3">
-            {DIFFICULTIES.map((d) => (
-              <button
-                key={d.id}
-                onClick={() => setDifficulty(d.id)}
-                className={cn(
-                  'py-3 px-2 text-center transition-all duration-200 rounded-2xl border',
-                  isLight ? (
-                    difficulty === d.id
-                      ? 'bg-white/90 border-amber-500 shadow-[0_0_16px_rgba(180,130,20,0.3)]'
-                      : 'bg-white/60 border-amber-700/20 hover:border-amber-600/40'
-                  ) : (
-                    difficulty === d.id
-                      ? 'glass-panel border-gold-400 shadow-gold-glow'
-                      : 'glass-panel hover:border-gold-500/40'
-                  ),
-                )}
-              >
-                <div className={cn(
-                  'font-main text-xl',
-                  isLight ? (difficulty === d.id ? 'text-amber-800' : 'text-amber-900/70') : (difficulty === d.id ? 'text-gold-300' : 'text-ivory/70'),
-                )}>
-                  {d.name}
-                </div>
-                <div className={cn(
-                  'text-xs',
-                  isLight ? 'text-amber-800/50' : 'text-ivory/40',
-                )}>{d.desc}</div>
-              </button>
-            ))}
-          </div>
-        </motion.div>
-
-        {/* 开始按钮 */}
-        <motion.button
-          initial={{ opacity: 0, scale: 0.9 }}
-          animate={{ opacity: 1, scale: 1 }}
-          transition={{ delay: 0.4, duration: 0.4 }}
-          whileHover={{ scale: loading ? 1 : 1.03 }}
-          whileTap={{ scale: loading ? 1 : 0.98 }}
-          onClick={handleStart}
-          disabled={loading}
-          className="btn-gold !font-main !text-2xl !px-12 !py-4 mb-4"
-        >
-          {loading ? '准备牌桌...' : '开始对战'}
-        </motion.button>
-
-        {/* 在线对战入口 */}
-        <motion.button
-          initial={{ opacity: 0, scale: 0.9 }}
-          animate={{ opacity: 1, scale: 1 }}
-          transition={{ delay: 0.35, duration: 0.4 }}
-          whileHover={{ scale: 1.03 }}
-          whileTap={{ scale: 0.98 }}
-          onClick={() => navigate('/lobby')}
-          className={cn(
-            'inline-flex items-center gap-2 rounded-2xl px-7 py-3 font-main text-xl border transition-all duration-200 mb-8',
-            isLight
-              ? 'bg-white/70 border-amber-700/30 text-amber-800 hover:border-amber-600 hover:bg-white/90'
-              : 'bg-ink-700/50 border-gold-600/40 text-gold-300 hover:border-gold-400 hover:text-gold-200',
-          )}
-        >
-          <Globe className="w-5 h-5" /> 在线对战
-        </motion.button>
-
-        {/* 战绩 + 规则 双栏 */}
-        <div className="w-full grid md:grid-cols-2 gap-4">
-          {/* 战绩面板 */}
-          <motion.div
-            initial={{ opacity: 0, x: -20 }}
-            animate={{ opacity: 1, x: 0 }}
-            transition={{ delay: 0.5 }}
-            className={cn(
-              'p-5 rounded-2xl border',
-              isLight
-                ? 'bg-white/70 border-amber-700/20 shadow-sm'
-                : 'glass-panel',
-            )}
-          >
-            <div className="flex items-center gap-2 mb-3">
-              <Trophy className={cn('w-5 h-5', isLight ? 'text-amber-700' : 'text-gold-400')} />
-              <span className={cn(
-                'font-main text-lg',
-                isLight ? 'text-amber-800' : 'text-gold-300',
-              )}>战绩</span>
-              {username && (
-                <span className={cn(
-                  'ml-auto text-xs px-2 py-0.5 rounded-full border',
-                  isLight
-                    ? 'border-amber-700/20 text-amber-800/70 bg-amber-500/5'
-                    : 'border-gold-600/30 text-gold-400/80 bg-gold-500/5',
-                )}>
-                  {username}
-                </span>
-              )}
-            </div>
-            {stats && stats.gamesPlayed > 0 ? (
-              <div className="space-y-2">
-                <div className="flex justify-between items-center">
-                  <span className={cn('text-sm', isLight ? 'text-amber-900/60' : 'text-ivory/60')}>总场次</span>
-                  <span className={cn('font-main', isLight ? 'text-amber-800' : 'text-gold-400')}>{stats.gamesPlayed}</span>
-                </div>
-                <div className="flex justify-between items-center">
-                  <span className={cn('text-sm', isLight ? 'text-amber-900/60' : 'text-ivory/60')}>胜率</span>
-                  <div className="flex items-center gap-2">
-                    <div className={cn(
-                      'w-20 h-1.5 rounded-full overflow-hidden',
-                      isLight ? 'bg-amber-200' : 'bg-ink-600',
-                    )}>
-                      <div className={cn(
-                        'h-full',
-                        isLight ? 'bg-gradient-to-r from-amber-500 to-amber-700' : 'bg-gradient-to-r from-gold-400 to-gold-600',
-                      )} style={{ width: `${winRate}%` }} />
-                    </div>
-                    <span className={cn('font-main', isLight ? 'text-amber-800' : 'text-gold-400')}>{winRate}%</span>
-                  </div>
-                </div>
-                <div className="flex justify-between items-center">
-                  <span className={cn('text-sm', isLight ? 'text-amber-900/60' : 'text-ivory/60')}>最高连胜</span>
-                  <span className={cn('font-main', isLight ? 'text-amber-800' : 'text-gold-400')}>{stats.maxStreak}</span>
-                </div>
-                <div className="flex justify-between items-center">
-                  <span className={cn('text-sm', isLight ? 'text-amber-900/60' : 'text-ivory/60')}>地主胜率</span>
-                  <span className={cn('font-main text-sm', isLight ? 'text-amber-800' : 'text-gold-400')}>
-                    {stats.landlordGames > 0 ? `${Math.round(stats.landlordWins / stats.landlordGames * 100)}%` : '-'}
-                  </span>
-                </div>
-                <div className="flex justify-between items-center">
-                  <span className={cn('text-sm', isLight ? 'text-amber-900/60' : 'text-ivory/60')}>农民胜率</span>
-                  <span className={cn('font-main text-sm', isLight ? 'text-amber-800' : 'text-gold-400')}>
-                    {stats.peasantGames > 0 ? `${Math.round(stats.peasantWins / stats.peasantGames * 100)}%` : '-'}
-                  </span>
-                </div>
-              </div>
-            ) : (
-              <div className={cn(
-                'text-sm py-4 text-center',
-                isLight ? 'text-amber-800/40' : 'text-ivory/30',
-              )}>
-                还没有战绩，开始第一局吧！
-              </div>
-            )}
-          </motion.div>
-
-          {/* 玩法说明 */}
-          <motion.div
-            initial={{ opacity: 0, x: 20 }}
-            animate={{ opacity: 1, x: 0 }}
-            transition={{ delay: 0.6 }}
-            className={cn(
-              'p-5 rounded-2xl border',
-              isLight
-                ? 'bg-white/70 border-amber-700/20 shadow-sm'
-                : 'glass-panel',
-            )}
-          >
-            <button
-              onClick={() => setShowRules(!showRules)}
-              className="flex items-center gap-2 w-full text-left"
-            >
-              <BookOpen className={cn('w-5 h-5', isLight ? 'text-amber-700' : 'text-gold-400')} />
-              <span className={cn(
-                'font-main text-lg',
-                isLight ? 'text-amber-800' : 'text-gold-300',
-              )}>玩法说明</span>
-              <ChevronDown className={cn(
-                'w-4 h-4 ml-auto transition-transform',
-                isLight ? 'text-amber-800/40' : 'text-ivory/40',
-                showRules && 'rotate-180',
-              )} />
-            </button>
-            {showRules && (
-              <motion.div
-                initial={{ opacity: 0, height: 0 }}
-                animate={{ opacity: 1, height: 'auto' }}
-                className={cn(
-                  'mt-3 space-y-2 text-sm overflow-hidden',
-                  isLight ? 'text-amber-900/70' : 'text-ivory/60',
-                )}
-              >
-                <p><span className={isLight ? 'text-amber-700 font-medium' : 'text-gold-400'}>牌型：</span>单张、对子、三张、三带一/二、顺子(5+)、连对(3+)、飞机、四带二、炸弹、王炸</p>
-                <p><span className={isLight ? 'text-amber-700 font-medium' : 'text-gold-400'}>大小：</span>3&lt;4&lt;...&lt;K&lt;A&lt;2&lt;小王&lt;大王</p>
-                <p><span className={isLight ? 'text-amber-700 font-medium' : 'text-gold-400'}>炸弹：</span>四张相同，翻倍并压过普通牌型</p>
-                <p><span className={isLight ? 'text-amber-700 font-medium' : 'text-gold-400'}>王炸：</span>双王，最大牌型</p>
-                <p><span className={isLight ? 'text-amber-700 font-medium' : 'text-gold-400'}>春天：</span>地主胜且农民未出牌 ×2；反春：农民胜且地主仅出一手 ×2</p>
-                <p><span className={isLight ? 'text-amber-700 font-medium' : 'text-gold-400'}>倍数：</span>底分 × 叫分 × 2^(炸弹+王炸) × 春天倍数</p>
-                <p><span className={isLight ? 'text-amber-700 font-medium' : 'text-gold-400'}>癞子：</span>癞子模式中随机抽取一个点数，该点数的牌可当作任意非王牌点数使用</p>
-                <p><span className={isLight ? 'text-amber-700 font-medium' : 'text-gold-400'}>天地癞子：</span>发牌后抽天癞子，确定地主后抽地癞子，两者不同且不为王牌；炸弹张数越多越大，同张数比点数</p>
-              </motion.div>
-            )}
-          </motion.div>
-        </div>
-      </main>
-
-      {/* 统一游戏设置面板 */}
-      <SettingsPanel open={showSettings} onClose={() => setShowSettings(false)} />
-
-      {/* 更新日志面板 */}
-      <ChangelogPanel open={showChangelog} onClose={() => setShowChangelog(false)} />
-
-      {/* 点击进入遮罩：解锁背景音乐 */}
-      <AnimatePresence>
-        {showSplash && (
-          <motion.div
-            initial={{ opacity: 1 }}
-            exit={{ opacity: 0 }}
-            transition={{ duration: 0.5 }}
-            className={cn(
-              'fixed inset-0 z-50 flex flex-col items-center justify-center overflow-hidden',
-              isLight ? 'bg-[#f5ecd7]' : 'bg-ink-900',
-            )}
-          >
-            <div
-              className="absolute inset-0"
-              style={isLight ? {
-                background: 'radial-gradient(ellipse at 50% 30%, #f0dfb0 0%, #e8d4a8 45%, #ddc690 100%)',
-              } : {
-                background: 'radial-gradient(ellipse at 50% 30%, #13293d 0%, #0d1b2a 45%, #0a0f1a 100%)',
-              }}
-            />
-            <FallingCards count={10} />
-            <motion.div
-              initial={{ opacity: 0, y: 20 }}
-              animate={{ opacity: 1, y: 0 }}
-              transition={{ duration: 0.6 }}
-              className="relative z-10 flex flex-col items-center"
-            >
-              <h1 className={cn(
-                'font-main text-7xl md:text-8xl mb-2 leading-none',
-                isLight
-                  ? 'text-amber-800 drop-shadow-[0_2px_8px_rgba(139,105,20,0.3)]'
-                  : 'text-gold-gradient text-shadow-gold',
-              )}>
-                斗地主
-              </h1>
-              <p className={cn(
-                'font-main text-sm tracking-[0.4em] uppercase mb-10',
-                isLight ? 'text-amber-700/60' : 'text-ivory/50',
-              )}>
-                {isLight ? 'Classic · Card Game' : 'Midnight · Parlor'}
-              </p>
-
-              {needProfile ? (
-                <motion.div
-                  initial={{ opacity: 0, y: 10 }}
-                  animate={{ opacity: 1, y: 0 }}
-                  transition={{ delay: 0.3 }}
-                  className={cn(
-                    'flex flex-col gap-4 w-80 max-w-[90vw] p-5 rounded-2xl border mb-2',
-                    isLight
-                      ? 'bg-white/70 border-amber-700/30'
-                      : 'bg-ink-700/60 border-gold-600/40 backdrop-blur',
-                  )}
-                >
-                  <div className="flex items-center gap-2">
-                    <User className={cn('w-5 h-5', isLight ? 'text-amber-700' : 'text-gold-400')} />
-                    <span className={cn(
-                      'font-main text-lg',
-                      isLight ? 'text-amber-800' : 'text-gold-300',
-                    )}>创建你的牌手身份</span>
-                  </div>
-                  <div>
-                    <label className={cn(
-                      'text-xs mb-1 block',
-                      isLight ? 'text-amber-800/60' : 'text-ivory/50',
-                    )}>用户名（战绩将按用户名分开记录）</label>
-                    <input
-                      value={inputName}
-                      onChange={(e) => setInputName(e.target.value.slice(0, 12))}
-                      onKeyDown={(e) => { if (e.key === 'Enter') handleEnter(); }}
-                      placeholder="请输入用户名"
-                      autoFocus
-                      maxLength={12}
-                      className={cn(
-                        'w-full px-3 py-2 rounded-xl border outline-none transition-colors',
-                        isLight
-                          ? 'bg-white/80 border-amber-700/30 text-amber-900 placeholder:text-amber-800/30 focus:border-amber-500'
-                          : 'bg-ink-800/80 border-gold-600/40 text-ivory placeholder:text-ivory/30 focus:border-gold-400',
-                      )}
-                    />
-                  </div>
-                  <div>
-                    <label className={cn(
-                      'text-xs mb-1.5 block',
-                      isLight ? 'text-amber-800/60' : 'text-ivory/50',
-                    )}>性别（决定你的语音声线）</label>
-                    <div className="grid grid-cols-2 gap-2">
-                      {([['male', '♂ 男'], ['female', '♀ 女']] as const).map(([g, label]) => (
-                        <button
-                          key={g}
-                          onClick={() => setInputGender(g)}
-                          className={cn(
-                            'py-2 rounded-xl border font-main transition-all duration-200',
-                            inputGender === g
-                              ? (isLight
-                                ? 'bg-amber-500 text-white border-amber-500'
-                                : 'bg-gold-500 text-ink-900 border-gold-400')
-                              : (isLight
-                                ? 'bg-white/70 text-amber-900/70 border-amber-700/25 hover:border-amber-600/50'
-                                : 'bg-ink-600/50 text-ivory/70 border-gold-600/30 hover:border-gold-500/50'),
-                          )}
-                        >
-                          {label}
-                        </button>
-                      ))}
-                    </div>
-                  </div>
-                  <motion.button
-                    whileHover={{ scale: inputName.trim() ? 1.03 : 1 }}
-                    whileTap={{ scale: inputName.trim() ? 0.97 : 1 }}
-                    onClick={handleEnter}
-                    disabled={!inputName.trim()}
-                    className={cn(
-                      'btn-gold !font-main !text-xl !px-8 !py-3 w-full',
-                      !inputName.trim() && 'opacity-40 cursor-not-allowed',
-                    )}
-                  >
-                    进入游戏
-                  </motion.button>
-                </motion.div>
-              ) : (
-                <motion.button
-                  whileHover={{ scale: 1.03 }}
-                  whileTap={{ scale: 0.97 }}
-                  onClick={handleEnter}
-                  className="btn-gold !font-main !text-2xl !px-12 !py-4"
-                >
-                  点击进入
-                </motion.button>
-              )}
-            </motion.div>
-          </motion.div>
-        )}
-      </AnimatePresence>
-    </div>
-  );
+  const saveProfile = async () => {
+    if (!name.trim()) return;
+    setProfileSaving(true); setProfileError('');
+    try {
+      await registerUser(name.trim());
+      setProfile(name, voice); setPanel(null); sound.ensureBgm('Welcome'); loadStats();
+    } catch { setProfileError('保存失败，请确认游戏服务已启动后重试。'); }
+    finally { setProfileSaving(false); }
+  };
+  return <div className="dph-home">
+    <div className="dph-scenery" style={{ backgroundImage: `url(${DPH_THEME.background})` }} />
+    <header className="dph-header">
+      <a className="dph-brand" href="/" aria-label="斗地主首页"><span>♠</span><div>斗地主<small>一 起 好 好 玩 牌</small></div></a>
+      <div className="dph-header-right">
+        <button className="dph-profile" onClick={() => { setName(username); setVoice(gender); setPanel('profile'); }}>
+          <img src={DPH_THEME.avatars[0]} alt="玩家头像" /><span>{username || '初来乍到'}<small>{username ? '欢迎回到牌桌' : '设置你的牌桌昵称'}</small></span>
+        </button>
+        <span className="dph-header-divider" />
+        <button className="dph-icon" onClick={toggleSound} aria-label={soundEnabled ? '关闭声音' : '开启声音'}>{soundEnabled ? <Volume2 size={20} /> : <VolumeX size={20} />}</button>
+      </div>
+    </header>
+    <main className="dph-main">
+      <section className="dph-welcome">
+        <div className="dph-eyebrow"><span /> 好时光 · 好牌友</div>
+        <h1>闲来一局，<br /><em>好牌登场。</em></h1>
+        <p>把忙碌暂放一旁。<br />在这方小小牌桌，遇见出其不意的精彩。</p>
+        <div className="dph-host-wrap"><div className="dph-host-halo" /><img className="dph-host" src={DPH_THEME.host} alt="在庭院中等候牌友的看板角色" /><div className="dph-host-note">牌桌已经备好，就等你啦！<span>✦</span></div></div>
+        <div className="dph-scene-caption"><i /> 庭院小憩 <span>COURTYARD / 01</span></div>
+      </section>
+      <section className="dph-play-panel" aria-label="选择玩法">
+        <div className="dph-panel-heading"><div><span className="dph-eyebrow">LET’S PLAY</span><h2>今天，玩点什么？</h2></div><span className="dph-stamp">好牌<br />开场</span></div>
+        <div className="dph-modes">{DPH_MODES.map((item, index) => <button key={item.id} className={`dph-mode ${mode === item.id ? 'is-selected' : ''}`} onClick={() => setMode(item.id)} aria-pressed={mode === item.id}>
+          <span className={`dph-mode-symbol symbol-${index}`}>{item.mark}</span><span className="dph-mode-name">{item.name}<small>{item.subtitle}</small></span>{mode === item.id ? <span className="dph-mode-check"><Check size={15} /></span> : <ChevronRight size={17} />}
+        </button>)}</div>
+        <div className="dph-mode-description" aria-live="polite">{current.description}</div>
+        <div className="dph-difficulty-label"><span>对手难度</span><small>找到适合你的节奏</small></div>
+        <div className="dph-difficulties">{DPH_DIFFICULTIES.map(item => <button key={item.id} onClick={() => setDifficulty(item.id)} aria-pressed={difficulty === item.id} className={difficulty === item.id ? 'is-selected' : ''}>{item.name}<small>{item.description}</small></button>)}</div>
+        {error && <div className="dph-error" role="alert">{error}，请确认游戏服务已启动后重试。</div>}
+        <button className="dph-start" disabled={loading} onClick={enter}><span>{loading ? '正在准备牌桌…' : '开始对战'}<small>{current.name} · {DPH_DIFFICULTIES.find(d => d.id === difficulty)?.name}</small></span><ArrowRight size={25} /></button>
+        <button className="dph-online" onClick={() => { if (!username) { setPanel('profile'); return; } sound.ensureBgm('Welcome'); navigate('/lobby'); }}><Globe size={17} /><span>好友同桌<small>创建房间，邀请朋友一起玩</small></span><ArrowRight size={18} /></button>
+      </section>
+    </main>
+    <footer className="dph-footer"><span>每一手，都是新的可能。</span><nav><button onClick={() => setSettings(true)}><Settings size={15} /> 个性化</button><button onClick={() => setLeaderboard(true)}><Trophy size={15} /> 排行榜</button><button onClick={() => setPanel('stats')}><Trophy size={15} /> 我的战绩</button><button onClick={() => setPanel('rules')}><BookOpen size={15} /> 玩法说明</button><button onClick={() => setChangelog(true)}>更新日志 <span>↗</span></button></nav><small>DOU DI ZHU · V2.0.0</small></footer>
+    {panel && <div className="dph-modal-scrim" onClick={() => setPanel(null)}><section className="dph-dialog" role="dialog" aria-modal="true" aria-labelledby="dph-dialog-title" onClick={e => e.stopPropagation()}><button className="dph-dialog-close" aria-label="关闭" onClick={() => setPanel(null)}><X size={20} /></button>
+      <span className="dph-eyebrow">A SEAT FOR YOU</span><h2 id="dph-dialog-title">{panel === 'profile' ? '认识一下，新牌友' : panel === 'stats' ? '你的牌桌足迹' : '好牌，从这里开始'}</h2>
+      {panel === 'profile' ? <form onSubmit={e => { e.preventDefault(); saveProfile(); }}><label htmlFor="player-name">牌桌昵称</label><input id="player-name" autoFocus maxLength={12} value={name} placeholder="输入昵称，最多 12 字" onChange={e => setName(e.target.value)} required /><label>语音声线</label><div className="dph-difficulties">{(['male', 'female'] as const).map(g => <button type="button" key={g} aria-pressed={voice === g} className={voice === g ? 'is-selected' : ''} onClick={() => setVoice(g)}>{g === 'male' ? '男声' : '女声'}</button>)}</div><button className="dph-start" disabled={!name.trim() || profileSaving} type="submit">{profileSaving ? '正在保存…' : '保存，回到大厅'} <ArrowRight size={20} /></button>{profileError && <p className="dph-error" role="alert">{profileError}</p>}</form> : panel === 'stats' ? <div className="dph-stats"><div><b>{stats?.gamesPlayed ?? 0}</b>总场次</div><div><b>{stats?.wins ?? 0}</b>获胜场次</div><div><b>{stats?.gamesPlayed ? Math.round(stats.wins / stats.gamesPlayed * 100) : 0}%</b>胜率</div></div> : <div className="dph-rules"><p>三人一桌，一人为地主，两人为农民。地主先出牌，任意一方率先出完手牌即获胜。</p><p>点数从小到大：3 至 K、A、2、小王、大王。可打单张、对子、三带、顺子、连对、飞机与炸弹；相同牌型比较点数，炸弹可压普通牌型，王炸最大。</p><p>叫分越高越有机会成为地主；炸弹、王炸和春天将增加倍数。癞子、天地癞子与闷抓模式沿用现有规则，可在对局中体验。癞子不洗牌使用单癞子规则，按 4+4+4+5 分批展示发牌并理牌，牌型聚集程度介于经典和不洗牌之间。</p></div>}
+    </section></div>}
+    {leaderboard && <LeaderboardPanel username={username} onClose={() => setLeaderboard(false)} />}
+    <SettingsPanel open={settings} onClose={() => setSettings(false)} /><ChangelogPanel open={changelog} onClose={() => setChangelog(false)} />
+  </div>;
 }

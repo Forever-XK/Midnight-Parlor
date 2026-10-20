@@ -1,3 +1,4 @@
+import { DPH_THEME } from '@/config/dphTheme';
 // AI 玩家座位组件（头像、昵称、剩余牌数、角色标识）
 import { motion } from 'framer-motion';
 import { Crown, Sprout } from 'lucide-react';
@@ -11,25 +12,14 @@ interface PlayerSeatProps {
   position: 'top-left' | 'top-right' | 'bottom';
   lastAction?: string;
   thinking?: boolean;
+  crownVisible?: boolean;
 }
-
-const AVATAR_COLORS = [
-  'from-amber-500 to-orange-600',
-  'from-emerald-500 to-teal-600',
-  'from-rose-500 to-pink-600',
-  'from-violet-500 to-purple-600',
-];
 
 function Avatar({ seat, name }: { seat: number; name: string }) {
-  const color = AVATAR_COLORS[seat % AVATAR_COLORS.length];
-  return (
-    <div className={cn('w-12 h-12 rounded-full bg-gradient-to-br flex items-center justify-center font-display text-xl text-white shadow-card border-2 border-gold-500/40', color)}>
-      {name.charAt(0)}
-    </div>
-  );
+  return <img className="dph-seat-avatar" src={DPH_THEME.avatars[seat % DPH_THEME.avatars.length]} alt={`${name}的头像`} draggable={false} />;
 }
 
-export default function PlayerSeat({ player, isCurrentTurn, position, lastAction, thinking }: PlayerSeatProps) {
+export default function PlayerSeat({ player, isCurrentTurn, position, lastAction, thinking, crownVisible = true }: PlayerSeatProps) {
   const isLandlord = player.role === 'landlord';
   const isLight = useThemeStore(s => s.theme === 'light');
 
@@ -50,13 +40,13 @@ export default function PlayerSeat({ player, isCurrentTurn, position, lastAction
           <Avatar seat={player.seat} name={player.name} />
           {/* 角色标识 */}
           {isLandlord && (
-            <div className={cn(
+            <div style={{ visibility: crownVisible ? 'visible' : 'hidden' }} className={cn(
               'absolute -top-3 -right-1 rounded-full p-1 shadow-card border',
               isLight
                 ? 'bg-red-500 border-red-300'
                 : 'bg-vermilion-500 border-gold-400',
             )}>
-              <Crown className={cn('w-3.5 h-3.5', isLight ? 'text-white' : 'text-gold-300')} />
+              <Crown data-landlord-crown-target={player.seat} className={cn('ddz-landlord-crown w-3.5 h-3.5', isLight ? 'text-white' : 'text-gold-300')} />
             </div>
           )}
           {!isLandlord && player.role && (

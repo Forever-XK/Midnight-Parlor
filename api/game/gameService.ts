@@ -2,10 +2,12 @@
 import type {
   AIEvent, Card, Difficulty, GameMode, GameState, LogEntry, Multiplier, Play, Seat, Snapshot,
 } from '@shared/types';
-import { deal, dealUnshuffled, sortCards, pickLaiziRank, pickDistinctLaiziRank } from './cards';
+import { dealForMode, sortCards, pickLaiziRank, pickDistinctLaiziRank } from './cards';
+import { usesSingleLaizi } from '@shared/gameModes';
 import { identifyPlay, identifyPlayWithLaizi, identifyPlaysWithLaizi, canBeat, type IdentifyOptions } from './rules';
 import { decideBid, decidePlay, getHint, type AIContext } from './aiEngine';
 import { getGame, saveGame, toPublicState, type InternalGame } from './store';
+import { redealGame } from './redeal';
 
 const AI_NAMES = ['老张', '阿强', '小美', '大刘', '阿珍', '老王', '阿杰', '小林'];
 const BASE_SCORE = 1;
@@ -65,6 +67,7 @@ function laiziOpts(game: InternalGame): IdentifyOptions {
 
 function makeAIContext(game: InternalGame, seat: Seat): AIContext {
   return {
+    mode: game.mode,
     hand: game.hands[seat],
     seat,
     role: game.roles[seat]!,
@@ -80,6 +83,7 @@ function makeAIContext(game: InternalGame, seat: Seat): AIContext {
     cardTracker: game.cardTracker,
     laiziRanks: laiziRanksOf(game),
     multiBomb: multiBombOf(game),
+    passCount: game.passCount,
   };
 }
 
@@ -127,8 +131,8 @@ export function createGameSession(
   viewerSeat: Seat = 0,
 ): { gameId: string; state: GameState; snapshots: Snapshot[] } {
   const gameId = genGameId();
-  const { hands, bottom } = mode === 'unshuffled' ? dealUnshuffled() : deal();
-  const laiziRank = mode === 'laizi' ? pickLaiziRank() : null;
+  const { hands, bottom } = dealForMode(mode);
+  const laiziRank = usesSingleLaizi(mode) ? pickLaiziRank() : null;
   const tianLaiziRank = mode === 'tiandilaizi' ? pickLaiziRank() : null;
 
   let mingCard: Card | null = null;
@@ -173,6 +177,7 @@ export function createGameSession(
     lastPlay: null,
     lastValidPlay: null,
     seatLastPlays: [null, null, null],
+    seatPassed: [false, false, false],
     passCount: 0,
     bidState: null,
     multiplier: emptyMultiplier(),
@@ -248,6 +253,7 @@ function isHumanSeat(game: InternalGame, seat: Seat): boolean {
  * 指定地主
  */
 function assignLandlord(game: InternalGame, seat: Seat, bid: number): void {
+  game.completedBids = game.bidState?.bids.map(result => ({ ...result })) ?? [];
   game.landlordSeat = seat;
   game.roles[seat] = 'landlord';
   for (let i = 0; i < 3; i++) {
@@ -314,7 +320,8 @@ export function playerMenzhua(gameId: string, choice: 'menzhua' | 'kanpai', seat
   if (seat !== game.mingCardSeat) return { state: toPublicState(game, seat), snapshots: [], error: '非明牌持有者' };
 
   processMenzhuaChoice(game, seat, choice);
-  const snapshots: Snapshot[] = [];
+  const snapshots: Snapshot[] = [{ state: toPublicState(game, seat),
+    event: { seat, action: choice === 'kanpai' ? 'reveal' : 'bid', value: choice === 'kanpai' ? 0 : 3, delay: 0 } }];
 
   if (choice === 'kanpai') {
     if (game.bidState && game.bidState.highestBid < 3 && game.bidState.bidCount < 3 && !isHumanSeat(game, game.currentSeat)) {
@@ -353,7 +360,7 @@ function runAIBids(game: InternalGame, snapshots: Snapshot[], viewerSeat: Seat):
     const bidEstimate = decideBid(ctx);
     const choice: 'menzhua' | 'kanpai' = bidEstimate >= 2 ? 'menzhua' : 'kanpai';
     processMenzhuaChoice(game, seat, choice);
-    const event: AIEvent = { seat, action: 'bid', value: choice === 'menzhua' ? 3 : 0, delay: bidDelay() };
+    const event: AIEvent = { seat, action: choice === 'kanpai' ? 'reveal' : 'bid', value: choice === 'menzhua' ? 3 : 0, delay: bidDelay() };
     snapshots.push({ state: toPublicState(game, viewerSeat), event });
 
     if (choice === 'kanpai') {
@@ -398,7 +405,11 @@ function runAIBids(game: InternalGame, snapshots: Snapshot[], viewerSeat: Seat):
 
     // 叫分结束条件：有人叫3或已叫满3人
     if (game.bidState && (game.bidState.highestBid === 3 || game.bidState.bidCount >= 3)) {
-      finishBidding(game);
+      finishBidding(game, snapshots, viewerSeat);
+      if ((game.phase as string) === 'menzhuaChoice') {
+        runAIBids(game, snapshots, viewerSeat);
+        return;
+      }
       // 无人叫分会触底重发（重置 bidState、phase 仍 bidding），继续推进新一轮叫分；
       // 正常结束则 assignLandlord 将 bidState 置空，循环条件不满足自然退出。
       continue;
@@ -438,44 +449,12 @@ function processBid(game: InternalGame, seat: Seat, bid: number): void {
 /**
  * 叫分结束，确定地主
  */
-function finishBidding(game: InternalGame): void {
+function finishBidding(game: InternalGame, snapshots: Snapshot[], viewerSeat: Seat): void {
   if (!game.bidState) return;
   if (game.bidState.highestSeat === null || game.bidState.highestBid === 0) {
-    if (game.bidRedealCount < 1) {
-      game.bidRedealCount++;
-      const { hands, bottom } = game.mode === 'unshuffled' ? dealUnshuffled() : deal();
-      game.hands = hands;
-      game.bottomCards = bottom;
-
-      if (game.mode === 'menzhua') {
-        game.phase = 'menzhuaChoice';
-        game.menzhuaPhase = 'waiting';
-        game.handRevealed = false;
-        game.bidState = null;
-        const all51: Card[] = [];
-        const seatOfCard: Map<string, 0 | 1 | 2> = new Map();
-        for (let s = 0; s < 3; s++) {
-          for (const c of hands[s]) {
-            all51.push(c);
-            seatOfCard.set(c.id, s as 0 | 1 | 2);
-          }
-        }
-        const pickIdx = Math.floor(Math.random() * all51.length);
-        game.mingCard = all51[pickIdx];
-        game.mingCardSeat = seatOfCard.get(game.mingCard.id)!;
-        game.currentSeat = game.mingCardSeat;
-        return;
-      }
-
-      const startSeat = Math.floor(Math.random() * 3) as Seat;
-      game.currentSeat = startSeat;
-      game.bidState = {
-        currentBidder: startSeat, bids: [], highestBid: 0, highestSeat: null,
-        startSeat, bidCount: 0,
-      };
-      return;
-    }
-    assignLandlord(game, game.bidState.startSeat, 1);
+    redealGame(game);
+    snapshots.push({ state: toPublicState(game, viewerSeat), event: { seat: game.currentSeat, action: 'redeal', delay: 850 } });
+    return;
   } else {
     assignLandlord(game, game.bidState.highestSeat!, game.bidState.highestBid);
   }
@@ -498,13 +477,18 @@ export function playerBid(gameId: string, bid: number, seat: Seat = 0): { state:
   }
 
   processBid(game, seat, bid);
-  const snapshots: Snapshot[] = [];
+  const snapshots: Snapshot[] = [{ state: toPublicState(game, seat), event: { seat, action: 'bid', value: bid, delay: 0 } }];
 
   // 推进 AI 叫分
   if (game.bidState && game.bidState.highestBid < 3 && game.bidState.bidCount < 3) {
     runAIBids(game, snapshots, seat);
   } else {
-    finishBidding(game);
+    finishBidding(game, snapshots, seat);
+    if ((game.phase as string) === 'bidding' || (game.phase as string) === 'menzhuaChoice') {
+      runAIBids(game, snapshots, seat);
+    } else {
+      snapshots.push({ state: toPublicState(game, seat), event: { seat: game.currentSeat, action: 'turn', delay: 200 } });
+    }
     // 若进入出牌阶段且轮到 AI，推进 AI 出牌
     if ((game.phase as string) === 'playing' && !isHumanSeat(game, game.currentSeat)) {
       runAIPlays(game, snapshots, seat);
@@ -554,6 +538,7 @@ function executePlay(game: InternalGame, seat: Seat, play: Play): void {
   game.lastPlay = { seat, play };
   game.lastValidPlay = { seat, play };
   game.seatLastPlays[seat] = play; // 记录该座位最近出的牌
+  game.seatPassed[seat] = false;  // 本轮该座位最近动作为出牌
   game.passCount = 0;
   game.playCounts[seat]++;
   log(game, seat, 'play', play);
@@ -577,6 +562,7 @@ function executePlay(game: InternalGame, seat: Seat, play: Play): void {
 function executePass(game: InternalGame, seat: Seat): void {
   game.lastPlay = { seat, play: { type: 'single', cards: [], mainRank: 0 as any, length: 0 } };
   game.passCount++;
+  game.seatPassed[seat] = true; // 本轮该座位最近动作为不出（气泡持续到本轮结束）
   log(game, seat, 'pass');
   // 两人不出后，上家有效出牌者重新领出，清空桌面所有出牌展示
   if (game.passCount >= 2 && game.lastValidPlay) {
@@ -585,6 +571,7 @@ function executePass(game: InternalGame, seat: Seat): void {
     game.lastPlay = null;
     game.passCount = 0;
     game.seatLastPlays = [null, null, null]; // 新一轮，清空桌面
+    game.seatPassed = [false, false, false];
   } else {
     game.currentSeat = nextSeat(seat);
   }

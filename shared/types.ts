@@ -46,7 +46,7 @@ export type Role = 'landlord' | 'peasant';
 export type Seat = 0 | 1 | 2;
 
 export type Difficulty = 'casual' | 'standard' | 'master';
-export type GameMode = 'classic' | 'unshuffled' | 'laizi' | 'tiandilaizi' | 'menzhua';
+export type GameMode = 'classic' | 'unshuffled' | 'laizi' | 'laizi_unshuffled' | 'tiandilaizi' | 'menzhua';
 
 // 游戏阶段
 //   dealing        发牌动画阶段（前端内部使用，后端通常直接进入后续阶段）
@@ -91,11 +91,12 @@ export interface PlayerPublic {
 // 游戏状态（前端可见）
 export interface GameState {
   gameId: string;
+  dealNumber?: number; // 同一对局中因无人叫地主而重发的次数
   mode: GameMode;
   difficulty: Difficulty;
   playerName?: string; // 本局玩家（观察者座位）的用户名，战绩归属用
-  laiziRank?: number; // 癞子点数（仅癞子模式）
-  tianLaiziRank?: number; // 天地癞子模式 - 天癞子（发牌后抽取）
+  laiziRank?: number; // 单癞子点数（癞子/癞子不洗牌模式）
+  tianLaiziRank?: number; // 天地癞子模式 - 天癞子（发牌前抽取）
   diLaiziRank?: number; // 天地癞子模式 - 地癞子（确定地主后抽取）
   phase: Phase;
   currentSeat: Seat;
@@ -105,8 +106,10 @@ export interface GameState {
   lastPlay: { seat: Seat; play: Play } | null;
   lastValidPlay: { seat: Seat; play: Play } | null; // 当前需压过的有效牌
   seatLastPlays: (Play | null)[]; // 每个座位最近一次出的牌（不含 pass），展示在玩家面前
+  seatPassed: boolean[]; // 本轮各座位最近动作是否为「不出」（新一轮清空），用于持续显示不出气泡
   passCount: number;
   bidState: BidState | null;
+  bidResults?: BidState['bids']; // 本轮叫分结果；确定地主后仍保留，供皇冠过场展示
   multiplier: Multiplier;
   result: {
     winner: 'landlord' | 'peasant';
@@ -140,7 +143,7 @@ export interface LogEntry {
 // AI 事件（用于前端动画播放）。action='turn' 为回合切换标记（不发声）
 export interface AIEvent {
   seat: Seat;
-  action: 'bid' | 'play' | 'pass' | 'turn';
+  action: 'bid' | 'play' | 'pass' | 'turn' | 'redeal' | 'reveal';
   value?: number | Play;
   delay: number; // 建议动画延迟（ms）
 }
@@ -181,6 +184,16 @@ export interface Stats {
     score: number;
   }>;
 }
+
+export interface LeaderboardEntry {
+  username: string;
+  gamesPlayed: number;
+  wins: number;
+  /** 0–1，保留原始精度用于排序，展示时转换为百分比。 */
+  winRate: number;
+}
+export type LeaderboardSort = 'gamesPlayed' | 'wins' | 'winRate';
+export type SortOrder = 'asc' | 'desc';
 
 // 表情/快捷语
 export interface Emote {

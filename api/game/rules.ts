@@ -340,7 +340,7 @@ export function findBeatingPlays(hand: Card[], last: Play, opts?: IdentifyOption
             if (usedSet.has(r)) continue;
             const avail = counts.get(r)!;
             for (let w = 0; w < avail && wings.length < lastLen; w++) {
-              wings.push(pickByRank(hand, r, 1)[w]);
+              wings.push(pickByRank(hand, r, w + 1)[w]);
             }
             if (wings.length >= lastLen) break;
           }

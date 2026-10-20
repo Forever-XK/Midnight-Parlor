@@ -3,7 +3,6 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import type { Card } from '@shared/types';
 import { sortCardsDesc } from '@/lib/cards';
-import { sound } from '@/lib/soundManager';
 import PlayingCard from './PlayingCard';
 import { cn } from '@/lib/utils';
 
@@ -13,9 +12,10 @@ interface PlayerHandProps {
   onToggleCard: (cardId: string) => void;
   disabled?: boolean;
   laiziRanks?: number[];
+  concealedCards?: string[];
 }
 
-export default function PlayerHand({ hand, selectedCards, onToggleCard, disabled, laiziRanks }: PlayerHandProps) {
+export default function PlayerHand({ hand, selectedCards, onToggleCard, disabled, laiziRanks, concealedCards }: PlayerHandProps) {
   const sorted = sortCardsDesc(hand, laiziRanks);
 
   // 计算手牌重叠量：牌少时不重叠（充分展开），牌多时逐渐增加重叠
@@ -38,11 +38,6 @@ export default function PlayerHand({ hand, selectedCards, onToggleCard, disabled
   const draggedIds = useRef<Set<string>>(new Set());  // 本次按住已翻转过的牌（去重）
   const [draggingUi, setDraggingUi] = useState(false); // 触发重渲染的高亮状态
 
-  const toggleWithSound = useCallback((cardId: string) => {
-    sound.selectCard();
-    onToggleCard(cardId);
-  }, [onToggleCard]);
-
   const endDrag = useCallback(() => {
     dragging.current = false;
     draggedIds.current.clear();
@@ -61,8 +56,8 @@ export default function PlayerHand({ hand, selectedCards, onToggleCard, disabled
   // React 合成 touchmove 为 passive 监听，故挂原生监听；坐标经旋转/缩放变换后
   // 与 elementFromPoint 同一视觉坐标系，命中检测天然正确
   const rowRef = useRef<HTMLDivElement>(null);
-  const cbRef = useRef({ toggle: toggleWithSound, endDrag });
-  cbRef.current = { toggle: toggleWithSound, endDrag };
+  const cbRef = useRef({ toggle: onToggleCard, endDrag });
+  cbRef.current = { toggle: onToggleCard, endDrag };
 
   useEffect(() => {
     const el = rowRef.current;
@@ -114,16 +109,16 @@ export default function PlayerHand({ hand, selectedCards, onToggleCard, disabled
     dragging.current = true;
     draggedIds.current = new Set([cardId]);
     setDraggingUi(true);
-    toggleWithSound(cardId);
-  }, [disabled, toggleWithSound]);
+    onToggleCard(cardId);
+  }, [disabled, onToggleCard]);
 
   const handleCardMouseEnter = useCallback((cardId: string) => {
     if (disabled || !dragging.current) return;
     // 每张牌在一次按住中只翻转一次
     if (draggedIds.current.has(cardId)) return;
     draggedIds.current.add(cardId);
-    toggleWithSound(cardId);
-  }, [disabled, toggleWithSound]);
+    onToggleCard(cardId);
+  }, [disabled, onToggleCard]);
 
   return (
     <div className="flex items-end justify-center px-4 pb-2 min-h-[112px]">
@@ -136,11 +131,13 @@ export default function PlayerHand({ hand, selectedCards, onToggleCard, disabled
                 key={card.id}
                 layout
                 data-card-id={card.id}
-                initial={{ y: 40, opacity: 0, rotate: -8 }}
+                data-concealed={concealedCards?.includes(card.id) ? 'true' : 'false'}
+                // 底牌/发牌由专用飞牌动画展示，隐藏的目标牌只预留落点，不再从底部入场。
+                initial={concealedCards?.includes(card.id) ? false : { y: 40, opacity: 0, rotate: -8 }}
                 animate={{ y: 0, opacity: 1, rotate: 0 }}
-                exit={{ y: -60, opacity: 0, scale: 0.8 }}
+                exit={{ opacity: 0, transition: { duration: .04 } }}
                 transition={{ duration: 0.3, delay: idx * 0.02 }}
-                style={{ marginLeft: idx === 0 ? -overlap / 2 : -overlap }}
+                style={{ position: 'relative', zIndex: idx, marginLeft: idx === 0 ? -overlap / 2 : -overlap, visibility: concealedCards?.includes(card.id) ? 'hidden' : 'visible' }}
                 onMouseDown={handleCardMouseDown}
                 onMouseEnter={() => handleCardMouseEnter(card.id)}
               >

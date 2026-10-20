@@ -12,10 +12,10 @@ import { cn } from '@/lib/utils';
 import type { GameMode, GameState, Seat } from '@shared/types';
 
 const MODE_ICON: Record<GameMode, typeof Swords> = {
-  classic: Swords, unshuffled: Shuffle, laizi: Dices, tiandilaizi: Crown, menzhua: Zap,
+  classic: Swords, unshuffled: Shuffle, laizi: Dices, laizi_unshuffled: Shuffle, tiandilaizi: Crown, menzhua: Zap,
 };
 const MODE_NAME: Record<GameMode, string> = {
-  classic: '经典模式', unshuffled: '不洗牌', laizi: '癞子模式', tiandilaizi: '天地癞子', menzhua: '闷抓斗地主',
+  classic: '经典模式', unshuffled: '不洗牌', laizi: '癞子模式', laizi_unshuffled: '癞子不洗牌', tiandilaizi: '天地癞子', menzhua: '闷抓斗地主',
 };
 
 export default function Room() {
@@ -96,7 +96,7 @@ export default function Room() {
 
   return (
     <div className={cn(
-      'min-h-screen relative overflow-hidden',
+      'dph-network min-h-screen relative overflow-hidden',
       isLight ? 'bg-[#f5ecd7]' : 'bg-ink-900',
     )}>
       <div

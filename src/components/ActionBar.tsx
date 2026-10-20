@@ -2,6 +2,7 @@
 import { Lightbulb, Ban, Send } from 'lucide-react';
 import { useGameStore } from '@/store/gameStore';
 import { cn } from '@/lib/utils';
+import { captureHandOrigins } from '@/lib/cardFlight';
 
 export default function ActionBar() {
   const { state, mySeat, selectedCards, doPlay, doPass, doHint, loading, isPlayingSnapshots } = useGameStore();
@@ -34,7 +35,7 @@ export default function ActionBar() {
       </button>
       <button
         disabled={!hasSelection || disabled}
-        onClick={doPlay}
+        onClick={() => { captureHandOrigins(state.gameId, selectedCards); void doPlay(); }}
         className="btn-gold"
       >
         <Send className="w-5 h-5" />

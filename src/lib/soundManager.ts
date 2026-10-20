@@ -6,6 +6,8 @@
 //   Man/Woman/{短语}.wav        叫分/不出/报警等语音
 //   根目录 {Welcome(BGM),Win,Lose,fapai,bomb...}.wav 特效音
 import type { Play } from '@shared/types';
+import { usePresentationStore } from '@/store/presentationStore';
+import { taiwanVoiceName } from './voicePacks';
 
 // 单张语音编号：rank 14(A)→1, 15(2)→2, 3~13→3~13, 16(小王)→14, 17(大王)→15
 function singleVoiceIndex(rank: number): number {
@@ -29,6 +31,9 @@ const modules = import.meta.glob('../../Sound/**/*.wav', {
   import: 'default',
   eager: true,
 }) as Record<string, string>;
+const taiwanModules = import.meta.glob('../../Sound/Taiwan/**/*.ogg', {
+  query: '?url', import: 'default', eager: true,
+}) as Record<string, string>;
 
 type Gender = 'man' | 'woman';
 
@@ -38,7 +43,7 @@ export type BgmName = 'Welcome' | 'Gaming' | 'Exciting';
 // 音乐包：Sound/bgm1~4/{Welcome,Gaming,Exciting}.wav
 export type BgmPack = 'bgm1' | 'bgm2' | 'bgm3' | 'bgm4';
 export const BGM_PACKS: { id: BgmPack; name: string; desc: string }[] = [
-  { id: 'bgm1', name: '新春', desc: '默认音乐包' },
+  { id: 'bgm1', name: '新春', desc: '新年快乐' },
   { id: 'bgm2', name: '经典', desc: '经典旋律' },
   { id: 'bgm3', name: '电玩', desc: '电子游戏风' },
   { id: 'bgm4', name: '庆典', desc: '欢庆气氛' },
@@ -48,6 +53,9 @@ const BGM_PACK_KEY = 'ddz-bgm-pack';
 class SoundManager {
   private enabled = true;
   private voices: Record<Gender, Record<string, string>> = { man: {}, woman: {} };
+  private taiwanVoices: Record<Gender, Record<string, string>> = { man: {}, woman: {} };
+  private mySeat = 0;
+  private previewAudio: HTMLAudioElement | null = null;
   private effects: Record<string, string> = {};
   // 每局为三个座位随机分配男/女声（拟人化）
   private seatGender: Gender[] = ['man', 'woman', 'man'];
@@ -60,6 +68,9 @@ class SoundManager {
   private activeAudios = new Set<HTMLAudioElement>();
   // 预加载实例池：持有引用确保大音效文件 load 完成并进入浏览器缓存
   private preloadPool: HTMLAudioElement[] = [];
+  // 高频短音效复用池（选牌/按钮点击/出牌）：实例在构造时即加载完成，
+  // 播放时直接重放，杜绝 new Audio() 的加载延迟与缓存读取失败导致的「时有时无」
+  private sfxPool: Record<string, HTMLAudioElement[]> = {};
 
   constructor() {
     // 初始音乐包（默认 bgm1）
@@ -81,6 +92,10 @@ class SoundManager {
       const em = path.match(/Sound\/(.+)\.wav$/i);
       if (em) this.effects[em[1].toLowerCase()] = url;
     }
+    for (const [path, url] of Object.entries(taiwanModules)) {
+      const match = path.replace(/\\/g, '/').match(/Taiwan\/(Man|Woman)\/(.+)\.ogg$/i);
+      if (match) this.taiwanVoices[match[1].toLowerCase() as Gender][match[2].toLowerCase()] = url;
+    }
     // 预加载较长特效音（炸弹/王炸的爆炸声），消除首次播放时的网络/磁盘加载延迟导致的无声或卡顿
     for (const k of ['bomb', 'longbomb', 'plane', 'chupai', 'fapai', 'double']) {
       const u = this.effects[k];
@@ -92,10 +107,27 @@ class SoundManager {
         this.preloadPool.push(a);
       } catch { /* 忽略 */ }
     }
+    // 高频短音效复用池：每音效预创建 4 个已加载实例，轮转复用
+    for (const k of ['xuanpai', 'xuanze', 'chupai']) {
+      const u = this.effects[k];
+      if (!u) continue;
+      this.sfxPool[k] = Array.from({ length: 4 }, () => {
+        const a = new Audio(u);
+        a.preload = 'auto';
+        a.load();
+        return a;
+      });
+    }
   }
 
   setEnabled(on: boolean): void {
     this.enabled = on;
+    if (!on) {
+      this.stopVoicePreview();
+      this.activeAudios.forEach(audio => audio.pause());
+      this.activeAudios.clear();
+      Object.values(this.sfxPool).flat().forEach(audio => audio.pause());
+    }
     // 背景音乐同步开关
     if (this.bgm) {
       if (on) void this.bgm.play().catch(() => { /* 忽略 */ });
@@ -105,14 +137,37 @@ class SoundManager {
 
   // 每局开始时随机分配各座位声线；mySeat 座位固定使用玩家自选性别声线
   newGame(mySeat = 0, myGender?: 'male' | 'female'): void {
+    this.mySeat = mySeat;
     this.seatGender = [0, 1, 2].map(() => (Math.random() < 0.5 ? 'man' : 'woman')) as Gender[];
     if (myGender) this.seatGender[mySeat] = myGender === 'female' ? 'woman' : 'man';
+  }
+
+  setPlayerGender(gender: 'male' | 'female'): void {
+    this.seatGender[this.mySeat] = gender === 'female' ? 'woman' : 'man';
+  }
+
+  stopVoicePreview(): void { this.previewAudio?.pause(); this.previewAudio = null; }
+
+  previewVoice(gender: 'male' | 'female', name = 'wangzha'): void {
+    this.stopVoicePreview();
+    const url = this.voiceUrl(gender === 'female' ? 'woman' : 'man', name);
+    if (!this.enabled || !url) return;
+    this.previewAudio = new Audio(url);
+    void this.previewAudio.play().catch(() => { /* A subsequent click can retry. */ });
   }
 
   // ===== 音乐包 =====
 
   getPack(): BgmPack {
     return this.pack;
+  }
+
+  getBgmName(): BgmName | null { return this.bgmName; }
+
+  stopBgm(): void {
+    this.bgm?.pause();
+    this.bgm = null;
+    this.bgmName = null;
   }
 
   /** 切换音乐包；若当前正在播放 BGM，则无缝切到新包的同一曲目 */
@@ -157,21 +212,46 @@ class SoundManager {
   }
 
   private voice(seat: number, name: string): void {
+    this.play(this.voiceUrl(this.seatGender[seat] ?? 'man', name), 1);
+  }
+
+  private voiceUrl(gender: Gender, name: string): string | undefined {
     const key = String(name).toLowerCase();
-    const gender = this.seatGender[seat] ?? 'man';
     const otherGender: Gender = gender === 'man' ? 'woman' : 'man';
+    if (usePresentationStore.getState().voicePack === 'taiwan') {
+      const taiwanKey = taiwanVoiceName(key);
+      const url = taiwanKey && this.taiwanVoices[gender][taiwanKey];
+      if (url) return url;
+    }
     // 查找顺序：本性别 → 相反性别 → 男声兜底（男声素材最齐）
     const url =
       this.voices[gender][key] ??
       this.voices[otherGender][key] ??
       this.voices.man[key];
-    this.play(url, 1);
+    return url;
   }
 
   private effect(name: string, volume = 0.6): void {
     const key = String(name).toLowerCase();
+    // 高频短音效走复用池（已加载实例直接重放，无加载延迟/缓存读取失败风险）
+    if (this.sfxPool[key]) { this.playPooled(key, volume); return; }
     const url = this.effects[key];
     this.play(url, volume);
+  }
+
+  /** 从短音效复用池取空闲实例重放；全忙时复用首个实例从头播放（快速连点时表现为重启音效，听感正常） */
+  private playPooled(name: string, volume: number): void {
+    if (!this.enabled) return;
+    const pool = this.sfxPool[name];
+    if (!pool?.length) return;
+    try {
+      const audio = pool.find((a) => a.paused || a.ended) ?? pool[0];
+      audio.volume = volume;
+      if (audio.currentTime > 0) audio.currentTime = 0;
+      void audio.play().catch(() => { /* 单次播放失败忽略，等待下次触发 */ });
+    } catch (e) {
+      console.warn('[sound] pooled play throw:', name, e);
+    }
   }
 
   private randomVoice(seat: number, names: string[]): void {
@@ -283,10 +363,18 @@ class SoundManager {
     this.randomVoice(seat, ['buyao1', 'buyao2', 'buyao3', 'buyao4']);
   }
 
-  /** 出牌：出牌音效 + 点数/牌型语音 + 组合特效 */
-  playCards(seat: number, play: Play): void {
+  /** 出牌：出牌音效 + 点数/牌型语音 + 组合特效
+   *  @param isFollow 是否为跟牌压制（压别人出的牌）：此时从牌型语音与压制语音（yapai1~3）中随机二选一 */
+  playCards(seat: number, play: Play, isFollow = false): void {
     // 出牌拍桌音效
     this.effect('chupai', 0.5);
+    // 压制（跟牌）：50% 概率播压制语音替代牌型语音；炸弹/王炸仍保留爆炸特效音
+    if (isFollow && Math.random() < 0.5) {
+      this.voice(seat, `yapai${1 + Math.floor(Math.random() * 3)}`);
+      if (play.type === 'bomb') this.effect('bomb', 0.8);
+      if (play.type === 'rocket') this.effect('longbomb', 0.8);
+      return;
+    }
     switch (play.type) {
       case 'single':
         this.voice(seat, `${singleVoiceIndex(play.mainRank)}`);
@@ -336,6 +424,11 @@ class SoundManager {
   alarm(seat: number, count: number): void {
     this.playBgm('Exciting');
     this.voice(seat, count <= 1 ? 'baojing1' : 'baojing2');
+  }
+
+  /** 局内快捷聊天语音：播放指定座位声线的 voice{index}.wav（index=1~12，文本见 chatVoices.ts） */
+  chatVoice(seat: number, index: number): void {
+    this.voice(seat, `voice${index}`);
   }
 }
 

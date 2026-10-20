@@ -15,6 +15,7 @@ const MODES: { id: GameMode; name: string; icon: typeof Swords }[] = [
   { id: 'classic', name: '经典模式', icon: Swords },
   { id: 'unshuffled', name: '不洗牌', icon: Shuffle },
   { id: 'laizi', name: '癞子模式', icon: Dices },
+  { id: 'laizi_unshuffled', name: '癞子不洗牌', icon: Shuffle },
   { id: 'tiandilaizi', name: '天地癞子', icon: Crown },
   { id: 'menzhua', name: '闷抓斗地主', icon: Zap },
 ];
@@ -84,7 +85,7 @@ export default function Lobby() {
 
   return (
     <div className={cn(
-      'min-h-screen relative overflow-hidden',
+      'dph-network min-h-screen relative overflow-hidden',
       isLight ? 'bg-[#f5ecd7]' : 'bg-ink-900',
     )}>
       <div

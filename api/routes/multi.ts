@@ -6,10 +6,10 @@ import {
 } from '../multi/roomService';
 import type { Card, Difficulty, GameMode } from '@shared/types';
 import { wsService } from '../ws/wsService';
+import { isGameMode } from '@shared/gameModes';
 
 const router = Router();
 
-const MODES = ['classic', 'unshuffled', 'laizi', 'tiandilaizi', 'menzhua'];
 const DIFFS = ['casual', 'standard', 'master'];
 
 function validName(name: any): string {
@@ -28,7 +28,7 @@ router.post('/multi/room/create', (req: Request, res: Response) => {
     clientId?: string; name?: string; mode?: GameMode; difficulty?: Difficulty;
   };
   if (!clientId) { res.status(400).json({ error: '缺少 clientId' }); return; }
-  if (!MODES.includes(mode as string)) { res.status(400).json({ error: '无效的模式' }); return; }
+  if (!isGameMode(mode)) { res.status(400).json({ error: '无效的模式' }); return; }
   if (!DIFFS.includes(difficulty as string)) { res.status(400).json({ error: '无效的难度' }); return; }
   const { room, error } = createRoom(clientId, validName(name), mode!, difficulty!);
   if (error || !room) { res.status(400).json({ error }); return; }

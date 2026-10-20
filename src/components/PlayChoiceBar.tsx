@@ -42,10 +42,11 @@ export default function PlayChoiceBar() {
         <button
           key={`${p.type}-${p.mainRank}-${p.length}`}
           disabled={!p.beats}
+          aria-pressed={idx === chosenPlayIdx}
           onClick={() => choosePlay(idx)}
           title={p.beats ? undefined : '压不过上家牌'}
           className={cn(
-            'px-3 py-1 rounded-lg text-sm font-main border transition-all duration-200',
+            'ddz-table-tool px-3 py-1 rounded-lg text-sm font-main border transition-all duration-200',
             idx === chosenPlayIdx
               ? (isLight
                 ? 'bg-amber-500 text-white border-amber-500 shadow-[0_0_10px_rgba(180,130,20,0.4)]'

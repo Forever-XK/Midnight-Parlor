@@ -1,35 +1,70 @@
-# Logs
-logs
-*.log
-npm-debug.log*
-yarn-debug.log*
-yarn-error.log*
-pnpm-debug.log*
-lerna-debug.log*
+# Dependencies and generated builds
+node_modules/
+/dist/
+/dist-ssr/
+/dist-electron/
+/release/
+/out/
+/build/
+*.tsbuildinfo
 
-node_modules
-dist
-dist-ssr
-dist-electron
-release
+# Local users, statistics and runtime databases
+/api/data/
+*.db
+*.db-shm
+*.db-wal
+*.sqlite
+*.sqlite3
+
+# Local environment settings (keep shareable examples)
+.env
+.env.*
+!.env.example
+!.env.*.example
 *.local
 
-# 运行时数据
-api/data/stats.json
+# Logs, caches and test output
+logs/
+*.log
+.cache/
+.vite/
+.tmp/
+tmp/
+temp/
+coverage/
+playwright-report/
+test-results/
+__pycache__/
+*.py[cod]
+/.trae-html-share-packages/
+/log-analysis-report/
 
-# 构建日志
-eb-log.txt
+# Local backups and archive bundles
+*.bak
+*.backup
+*-bak.*
+*.tmp
+*.temp
+*~
+DDZ-cleanup-backup-*/
+DDZ-cleanup-backup-*.zip
+/DDZ*.zip
+/DDZ*.7z
+/DDZ*.rar
 
-# Editor directories and files
+# Editor / operating system state
+.trae/
+.idea/
 .vscode/*
 !.vscode/extensions.json
-.idea
+!.vscode/settings.example.json
 .DS_Store
+Thumbs.db
+Desktop.ini
 *.suo
 *.ntvs*
 *.njsproj
 *.sln
 *.sw?
-.vite
 
-.trae/
+# Keep source, package-lock.json, public/ and Sound/ in the repository.

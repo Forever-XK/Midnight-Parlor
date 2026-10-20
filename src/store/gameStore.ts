@@ -1,11 +1,14 @@
 // 游戏状态管理（Zustand）
 import { create } from 'zustand';
 import type { AIEvent, Difficulty, GameMode, GameState, Play, Seat, Snapshot, Stats } from '@shared/types';
+import { usesSingleLaizi } from '@shared/gameModes';
+import { dealKey } from '@shared/dealPresentation';
 import * as api from '@/lib/api';
 import type { PlayChoiceInfo } from '@/lib/api';
 import * as onlineApi from '@/lib/onlineApi';
 import { sound } from '@/lib/soundManager';
 import { gameWS } from '@/lib/gameWS';
+import { chatVoiceText } from '@/lib/chatVoices';
 import { currentUsername, currentUserGender } from '@/store/userStore';
 
 // 快照播放版本号 —— 每次开始新游戏时递增，用于取消旧的快照播放
@@ -13,6 +16,18 @@ let snapshotVersion = 0;
 
 // 选牌分析请求序号 —— 仅最新一次选牌的分析结果生效（防止竞态旧结果覆盖）
 let analyzeSeq = 0;
+
+// 三种癞子玩法共用开场屏障：抽取动画完整退场后才允许开始发牌。
+function hasPreDealWild(state: GameState): boolean {
+  return state.mode === 'tiandilaizi' ? state.tianLaiziRank != null
+    : usesSingleLaizi(state.mode) && state.laiziRank != null;
+}
+
+// ===== 局内快捷语音 =====
+// 各座位聊天气泡的自动消失定时器（模块级，跨 store 更新持有）
+const chatTimers: (ReturnType<typeof setTimeout> | null)[] = [null, null, null];
+const CHAT_DISPLAY_MS = 4000;   // 气泡显示时长
+const CHAT_COOLDOWN_MS = 3000;  // 发送冷却（防刷屏）
 
 // 防御性手牌清洗：闷抓模式 + 尚未看牌/闷抓时，
 // 若后端（或跨局残留）把任何手牌写进 state.players[*].hand，统一在前端再抹掉。
@@ -32,9 +47,16 @@ function scrubSnapshots(snaps: Snapshot[], mySeat: Seat): Snapshot[] {
   }));
 }
 
+// 判定「跟牌压制」：动作前桌面上有待压的有效牌（lastPlay 非空且非 pass，且不是自己领出转回）
+function isFollowPlay(prevState: GameState | null | undefined, seat: number): boolean {
+  const lp = prevState?.lastPlay;
+  return !!lp && lp.play.cards.length > 0 && lp.seat !== seat;
+}
+
 // 播放 AI 事件音效（'turn' 为回合切换标记，不发声）
-function playEventSound(event: AIEvent, state: GameState): void {
-  if (event.action === 'turn') return;
+function playEventSound(event: AIEvent, state: GameState, prevState?: GameState | null): void {
+  if (event.action === 'turn' || event.action === 'redeal') return;
+  if (event.action === 'reveal') { sound.bid(event.seat, 0, false); return; }
   if (event.action === 'bid') {
     const hasBid = (state.bidState?.bids ?? []).some((b) => b.bid > 0);
     sound.bid(event.seat, (event.value as number) ?? 0, hasBid);
@@ -45,11 +67,36 @@ function playEventSound(event: AIEvent, state: GameState): void {
     return;
   }
   if (event.action === 'play' && event.value) {
-    sound.playCards(event.seat, event.value as Play);
+    sound.playCards(event.seat, event.value as Play, isFollowPlay(prevState, event.seat));
     // 出牌后剩 1-2 张 → 报牌警示
     const count = state.players[event.seat]?.cardCount ?? 99;
     if (count > 0 && count <= 2) sound.alarm(event.seat, count);
   }
+}
+
+// 显示某座位的聊天气泡（CHAT_DISPLAY_MS 后自动消失；同座位新消息覆盖旧消息）
+function showChatBubble(
+  set: (fn: (s: GameStore) => Partial<GameStore>) => void,
+  seat: number,
+  voiceIndex: number,
+): void {
+  const text = chatVoiceText(voiceIndex);
+  if (!text) return;
+  const idx = ((seat % 3) + 3) % 3;
+  set((s) => {
+    const next = [...s.seatChats];
+    next[idx] = { text, key: `${seat}-${Date.now()}` };
+    return { seatChats: next };
+  });
+  if (chatTimers[idx]) clearTimeout(chatTimers[idx]!);
+  chatTimers[idx] = setTimeout(() => {
+    set((s) => {
+      const next = [...s.seatChats];
+      next[idx] = null;
+      return { seatChats: next };
+    });
+    chatTimers[idx] = null;
+  }, CHAT_DISPLAY_MS);
 }
 
 interface GameStore {
@@ -68,8 +115,17 @@ interface GameStore {
   stats: Stats | null;
   isPlayingSnapshots: boolean;
   isDealing: boolean;          // 正在播放发牌动画
+  isDrawingWild: boolean;      // 发牌前抽癞子/天癞，期间仍保持 isDealing 阻止对局推进
+  dealIntro: 'redeal' | 'ming' | null;
+  isRevealingMenzhua: boolean;
+  finishDealIntro: () => void;
+  finishMenzhuaReveal: () => void;
   pendingSnapshots: Snapshot[]; // 发牌动画完成后待播放的快照
   dealtGameId: string | null;  // 已播放过发牌动画的 gameId（跨组件/跨路由防重播兜底）
+
+  // 局内快捷语音（各座位当前显示的聊天气泡；null=无）
+  seatChats: ({ text: string; key: string } | null)[];
+  chatCooldownUntil: number;   // 下次可发送时间戳（防刷屏）
 
   // 联机对战会话
   online: boolean;
@@ -86,6 +142,7 @@ interface GameStore {
   loadStats: () => Promise<void>;
   startGame: () => Promise<void>;
   finishDealing: () => void;   // 发牌动画完成
+  finishWildDraw: (gameId: string) => void;
   toggleCard: (cardId: string) => void;
   clearSelection: () => void;
   selectCards: (cardIds: string[]) => void;
@@ -99,6 +156,10 @@ interface GameStore {
   playSnapshots: (snapshots: Snapshot[]) => Promise<void>;
   setError: (e: string | null) => void;
   quitGame: () => void;
+
+  // 局内快捷语音
+  sendChat: (voiceIndex: number) => void;         // 发送：播放语音+气泡（联机再广播给其他人）
+  handleRemoteChat: (seat: number, voiceIndex: number) => void; // 收到其他玩家的语音
 
   // 联机会话控制
   setOnlineSession: (roomId: string, mySeat: Seat, name: string, state: GameState, snapshots?: Snapshot[] | null) => void;
@@ -127,8 +188,14 @@ export const useGameStore = create<GameStore>((set, get) => ({
   stats: null,
   isPlayingSnapshots: false,
   isDealing: false,
+  isDrawingWild: false,
+  dealIntro: null,
+  isRevealingMenzhua: false,
   pendingSnapshots: [],
   dealtGameId: null,
+
+  seatChats: [null, null, null],
+  chatCooldownUntil: 0,
 
   online: false,
   roomId: null,
@@ -164,6 +231,7 @@ export const useGameStore = create<GameStore>((set, get) => ({
       selectedCards: new Set(),
       isPlayingSnapshots: false,
       isDealing: false,
+      isDrawingWild: false,
       pendingSnapshots: [],
       online: false,
       roomId: null,
@@ -178,30 +246,48 @@ export const useGameStore = create<GameStore>((set, get) => ({
       const scrubbedState = scrubMenzhuaHands(res.state, 0);
       const scrubbedSnaps = scrubSnapshots(res.snapshots ?? [], 0);
       const gid = res.gameId;
-      const alreadyDealt = get().dealtGameId === gid;
+      const opening = scrubbedSnaps[0]?.state ?? scrubbedState;
+      const alreadyDealt = get().dealtGameId === dealKey(opening);
       set({
         gameId: gid,
-        state: scrubbedState,
+        // 返回 state 可能已推进到 AI 首手之后；开局必须从待播快照起点展示。
+        state: alreadyDealt ? scrubbedState : (scrubbedSnaps[0]?.state ?? scrubbedState),
         loading: false,
         isDealing: alreadyDealt ? false : true,
+        isDrawingWild: !alreadyDealt && hasPreDealWild(opening),
+        dealIntro: !alreadyDealt && opening.mode === 'menzhua' ? 'ming' : null,
+        isRevealingMenzhua: false,
         pendingSnapshots: alreadyDealt ? [] : scrubbedSnaps,
-        dealtGameId: gid,
+        dealtGameId: dealKey(opening),
       });
     } catch (e: any) {
       set({ loading: false, error: e?.response?.data?.error || '创建对局失败' });
     }
   },
 
+  finishWildDraw: (gameId) => {
+    if (get().state && dealKey(get().state!) === gameId) set({ isDrawingWild: false });
+  },
+
+  finishDealIntro: () => {
+    const s = get();
+    set({ dealIntro: s.dealIntro === 'redeal' && s.state?.mode === 'menzhua' ? 'ming' : null });
+  },
+  finishMenzhuaReveal: () => {
+    const pending = get().pendingSnapshots;
+    set({ isRevealingMenzhua: false, pendingSnapshots: [] });
+    if (pending.length) void get().playSnapshots(pending);
+  },
+
   finishDealing: () => {
+    if (get().isDrawingWild || get().dealIntro) return;
     const { pendingSnapshots } = get();
-    set({ isDealing: false, pendingSnapshots: [] });
-    if (pendingSnapshots.length > 0) {
-      // 立即设置第一个快照状态（玩家动作后、AI 动作前）
-      set({ state: pendingSnapshots[0].state });
-      if (pendingSnapshots.length > 1) {
-        get().playSnapshots(pendingSnapshots.slice(1));
-      }
-    }
+    // 原子切换到回放起点，避免先解除遮罩、再回退状态的一帧闪现。
+    const first = pendingSnapshots[0];
+    const skipTurn = first?.event.action === 'turn' && get().state && dealKey(first.state) === dealKey(get().state!);
+    set({ isDealing: false, pendingSnapshots: [], state: skipTurn ? first.state : get().state });
+    const replay = skipTurn ? pendingSnapshots.slice(1) : pendingSnapshots;
+    if (replay.length) void get().playSnapshots(replay);
   },
 
   toggleCard: (cardId) => {
@@ -251,7 +337,7 @@ export const useGameStore = create<GameStore>((set, get) => ({
 
   doBid: async (bid) => {
     const { gameId, roomId, online, mySeat, isPlayingSnapshots, isDealing, loading, state } = get();
-    if (isPlayingSnapshots || isDealing || loading) return;
+    if (isPlayingSnapshots || isDealing || get().isRevealingMenzhua || loading) return;
 
     // 联机模式：提交叫分，若后端返回 snapshots 则按节奏回放（保证 AI「思考」1.5s+）
     if (online && roomId) {
@@ -306,7 +392,7 @@ export const useGameStore = create<GameStore>((set, get) => ({
 
   doMenzhua: async (choice) => {
     const { gameId, roomId, online, isPlayingSnapshots, isDealing, loading } = get();
-    if (isPlayingSnapshots || isDealing || loading) return;
+    if (isPlayingSnapshots || isDealing || get().isRevealingMenzhua || loading) return;
 
     if (online && roomId) {
       set({ loading: true, error: null });
@@ -315,11 +401,7 @@ export const useGameStore = create<GameStore>((set, get) => ({
         set({ loading: false });
         const snaps = res.snapshots;
         if (snaps && snaps.length > 0) {
-          if (snaps[0].event.action !== 'turn') {
-            playEventSound(snaps[0].event, snaps[0].state);
-          }
-          set({ state: snaps[0].state });
-          if (snaps.length > 1) get().playSnapshots(snaps.slice(1));
+          void get().playSnapshots(snaps);
         } else if (res.state) {
           get().applyOnlineState(res.state);
         }
@@ -337,13 +419,7 @@ export const useGameStore = create<GameStore>((set, get) => ({
       const res = await api.menzhuaGame(gameId, choice);
       set({ loading: false });
       if (res.snapshots.length > 0) {
-        if (res.snapshots[0].event.action !== 'turn') {
-          playEventSound(res.snapshots[0].event, res.snapshots[0].state);
-        }
-        set({ state: res.snapshots[0].state });
-        if (res.snapshots.length > 1) {
-          get().playSnapshots(res.snapshots.slice(1));
-        }
+        void get().playSnapshots(res.snapshots);
       } else {
         set({ state: res.state });
       }
@@ -387,7 +463,8 @@ export const useGameStore = create<GameStore>((set, get) => ({
         const preState = res.snapshots?.[0]?.state ?? res.state;
         const myPlay = preState?.seatLastPlays?.[mySeat] ?? res.state?.seatLastPlays?.[mySeat];
         if (myPlay && myPlay.cards.length > 0) {
-          sound.playCards(mySeat, myPlay);
+          // state 为动作前状态：lastPlay 非空（非 pass）即本机跟牌压制
+          sound.playCards(mySeat, myPlay, isFollowPlay(state, mySeat));
           const cnt = res.state?.players?.[mySeat]?.cardCount ?? 99;
           if (cnt > 0 && cnt <= 2) sound.alarm(mySeat, cnt);
         }
@@ -430,7 +507,8 @@ export const useGameStore = create<GameStore>((set, get) => ({
       const preState = res.snapshots?.[0]?.state ?? res.state;
       const myPlay = preState?.seatLastPlays?.[0] ?? res.state?.seatLastPlays?.[0];
       if (myPlay && myPlay.cards.length > 0) {
-        sound.playCards(0, myPlay);
+        // state 为动作前状态：lastPlay 非空（非 pass）即本机跟牌压制
+        sound.playCards(0, myPlay, isFollowPlay(state, 0));
         const cnt = res.state?.players?.[0]?.cardCount ?? 99;
         if (cnt > 0 && cnt <= 2) sound.alarm(0, cnt);
       }
@@ -457,7 +535,7 @@ export const useGameStore = create<GameStore>((set, get) => ({
 
   doPass: async () => {
     const { gameId, roomId, online, mySeat, isPlayingSnapshots, isDealing, loading } = get();
-    if (isPlayingSnapshots || isDealing || loading) return;
+    if (isPlayingSnapshots || isDealing || get().isRevealingMenzhua || loading) return;
 
     // 联机模式
     if (online && roomId) {
@@ -516,7 +594,7 @@ export const useGameStore = create<GameStore>((set, get) => ({
 
   doHint: async () => {
     const { gameId, roomId, online, isPlayingSnapshots, isDealing, loading } = get();
-    if (isPlayingSnapshots || isDealing || loading) return;
+    if (isPlayingSnapshots || isDealing || get().isRevealingMenzhua || loading) return;
 
     // 联机模式
     if (online && roomId) {
@@ -548,25 +626,53 @@ export const useGameStore = create<GameStore>((set, get) => ({
 
   playSnapshots: async (snapshots) => {
     if (snapshots.length === 0) return;
+    if (get().isDealing || get().isRevealingMenzhua || get().isPlayingSnapshots) {
+      set(s => ({ pendingSnapshots: [...s.pendingSnapshots, ...snapshots] }));
+      return;
+    }
     const version = ++snapshotVersion;
     const seat = get().mySeat;
     set({ isPlayingSnapshots: true });
-    for (const snap of snapshots) {
+    for (let index = 0; index < snapshots.length; index++) {
+      const snap = snapshots[index];
       await new Promise((r) => setTimeout(r, snap.event.delay));
       // 版本号不匹配说明已开始新游戏，中止旧快照播放
       if (version !== snapshotVersion) return;
+      // 动作前状态（用于判定跟牌压制）
+      const prevState = get().state;
+      const incoming = scrubMenzhuaHands(snap.state, seat);
+      if (prevState?.gameId === incoming.gameId && (incoming.dealNumber ?? 0) < (prevState.dealNumber ?? 0)) continue;
+      if (prevState && dealKey(incoming) !== dealKey(prevState)) {
+        set({ state: incoming, isDealing: true, isDrawingWild: hasPreDealWild(incoming),
+          dealIntro: 'redeal', isPlayingSnapshots: false, dealtGameId: dealKey(incoming),
+          selectedCards: new Set(), playChoices: [],
+          pendingSnapshots: [{ state: incoming, event: { action: 'turn', seat: incoming.currentSeat, delay: 0 } },
+            ...snapshots.slice(index + 1), ...get().pendingSnapshots] });
+        return;
+      }
+      const reveal = incoming.mode === 'menzhua' && incoming.handRevealed && incoming.phase === 'bidding'
+        && prevState?.handRevealed === false;
+      if (reveal) {
+        sound.bid(snap.event.seat, 0, false);
+        set({ state: incoming, isRevealingMenzhua: true, isPlayingSnapshots: false,
+          pendingSnapshots: [...snapshots.slice(index + 1), ...get().pendingSnapshots] });
+        return;
+      }
       set({ state: scrubMenzhuaHands(snap.state, seat) });
       // 播放该 AI 动作对应的音效
-      playEventSound(snap.event, snap.state);
+      if (snap.event.action !== 'reveal') playEventSound(snap.event, snap.state, prevState);
     }
     if (version === snapshotVersion) {
       set({ isPlayingSnapshots: false });
+      const pending = get().pendingSnapshots;
+      if (pending.length) { set({ pendingSnapshots: [] }); void get().playSnapshots(pending); }
     }
   },
 
   setError: (e) => set({ error: e }),
 
   quitGame: () => {
+    snapshotVersion++;
     // 完整清理联机会话（含 WS 订阅、座位号）：
     // 否则退出联机后再开单机，残留的 online/roomId/mySeat 会导致
     // 旧房间 WS/轮询覆盖新对局状态、手牌按错误座位读取（梅花3 + 看不到牌）
@@ -580,8 +686,12 @@ export const useGameStore = create<GameStore>((set, get) => ({
       error: null,
       isPlayingSnapshots: false,
       isDealing: false,
+      isDrawingWild: false,
+      dealIntro: null,
+      isRevealingMenzhua: false,
       pendingSnapshots: [],
       dealtGameId: null,
+      seatChats: [null, null, null],
       online: false,
       roomId: null,
       mySeat: 0,
@@ -593,30 +703,38 @@ export const useGameStore = create<GameStore>((set, get) => ({
   // ===== 联机会话 =====
   setOnlineSession: (roomId, mySeat, name, state, snapshots) => {
     // 联机对局也随机分配各座位声线
-    sound.newGame();
+    sound.newGame(mySeat, currentUserGender());
     const scrubbedState = scrubMenzhuaHands(state, mySeat);
     const scrubbedSnaps = scrubSnapshots(snapshots ?? [], mySeat);
     const gid = scrubbedState.gameId;
     const prev = get();
-    const alreadyDealt = prev.dealtGameId === gid;
+    const opening = scrubbedSnaps[0]?.state ?? scrubbedState;
+    const alreadyDealt = prev.dealtGameId === dealKey(opening);
     set({
       online: true, roomId, mySeat, onlineName: name,
-      state: scrubbedState, gameId: gid,
+      state: alreadyDealt ? scrubbedState : (scrubbedSnaps[0]?.state ?? scrubbedState), gameId: gid,
       error: null,
       isDealing: alreadyDealt ? false : true,
+      isDrawingWild: !alreadyDealt && hasPreDealWild(opening),
+      dealIntro: !alreadyDealt && opening.mode === 'menzhua' ? 'ming' : null,
+      isRevealingMenzhua: false,
       pendingSnapshots: alreadyDealt ? [] : scrubbedSnaps,
-      dealtGameId: gid,
+      dealtGameId: dealKey(opening),
     });
   },
   syncOnlineState: (state) => {
-    const seat = get().mySeat;
-    set({ state: scrubMenzhuaHands(state, seat), gameId: state.gameId });
+    get().applyOnlineState(state);
   },
   // 应用联机状态并按前后状态差异播放对应音效（叫分 / 出牌 / 不出）
   applyOnlineState: (state) => {
     const seat = get().mySeat;
     const prev = get().state;
     const scrubbed = scrubMenzhuaHands(state, seat);
+    if (get().isDealing || get().isRevealingMenzhua || get().isPlayingSnapshots
+      || (prev && (dealKey(prev) !== dealKey(scrubbed) || (prev.handRevealed === false && scrubbed.handRevealed && scrubbed.phase === 'bidding')))) {
+      void get().playSnapshots([{ state: scrubbed, event: { action: 'turn', seat: prev?.mingCardSeat ?? scrubbed.currentSeat, delay: 0 } }]);
+      return;
+    }
     set({ state: scrubbed, gameId: scrubbed.gameId });
     if (!prev) return;
     // 叫分语音：新增的叫分记录
@@ -633,7 +751,8 @@ export const useGameStore = create<GameStore>((set, get) => ({
       const pp = prev.seatLastPlays[s];
       const cp = state.seatLastPlays[s];
       if (cp && cp.cards.length > 0 && JSON.stringify(pp) !== JSON.stringify(cp)) {
-        sound.playCards(s, cp);
+        // prev.lastPlay 为动作前桌面上的待压牌 → 判定跟牌压制
+        sound.playCards(s, cp, isFollowPlay(prev, s));
         const cnt = state.players[s]?.cardCount ?? 99;
         if (cnt > 0 && cnt <= 2) sound.alarm(s, cnt);
       }
@@ -649,24 +768,48 @@ export const useGameStore = create<GameStore>((set, get) => ({
     }
   },
   // 联机模式下触发一次发牌动画：若已经在发牌中则不清空快照（避免 setOnlineSession 传入的待播快照丢失）
-  // 同一 gameId 的重复触发（路由切回、useRef 重置、轮询抖振）一律跳过，防止重播。
+  // 同一发牌轮次的重复触发一律跳过；dealNumber 增加时允许重新播放。
   onlineDeal: () => {
     const s = get();
-    const gid = s.state?.gameId ?? s.gameId;
+    const gid = s.state ? dealKey(s.state) : s.gameId;
     if (gid && s.dealtGameId === gid) return;
     const alreadyDealing = s.isDealing;
     sound.newGame(s.mySeat, currentUserGender());
     if (alreadyDealing) return;
-    set({ isDealing: true, pendingSnapshots: [], isPlayingSnapshots: false, dealtGameId: gid ?? s.dealtGameId });
+    set({ isDealing: true, isDrawingWild: !!s.state && hasPreDealWild(s.state),
+      dealIntro: s.state?.mode === 'menzhua' ? 'ming' : null,
+      pendingSnapshots: [], isPlayingSnapshots: false, dealtGameId: gid ?? s.dealtGameId });
   },
   exitOnline: () => {
+    snapshotVersion++;
     try { gameWS.unsubscribe(); } catch { /* ignore */ }
     set({
       online: false, roomId: null, mySeat: 0, onlineName: '',
       state: null, gameId: null, selectedCards: new Set(), playChoices: [], chosenPlayIdx: 0, error: null,
-      isPlayingSnapshots: false, isDealing: false, pendingSnapshots: [],
+      isPlayingSnapshots: false, isDealing: false, isDrawingWild: false, pendingSnapshots: [],
+      dealIntro: null, isRevealingMenzhua: false,
       wsConnected: false, dealtGameId: null,
+      seatChats: [null, null, null],
     });
+  },
+
+  // ===== 局内快捷语音 =====
+  sendChat: (voiceIndex) => {
+    const now = Date.now();
+    if (now < get().chatCooldownUntil) return; // 冷却中（防刷屏）
+    set({ chatCooldownUntil: now + CHAT_COOLDOWN_MS });
+    const mySeat = get().mySeat;
+    // 自己本地立即播放（用自己声线）+ 显示气泡
+    sound.chatVoice(mySeat, voiceIndex);
+    showChatBubble(set, mySeat, voiceIndex);
+    // 联机模式：广播给房间内其他玩家
+    if (get().online) gameWS.sendChat(voiceIndex);
+  },
+
+  handleRemoteChat: (seat, voiceIndex) => {
+    // 收到其他玩家的快捷语音：用该座位声线播放 + 显示气泡
+    sound.chatVoice(seat, voiceIndex);
+    showChatBubble(set, seat, voiceIndex);
   },
 
   // ===== WebSocket 联机同步 =====
@@ -701,6 +844,10 @@ export const useGameStore = create<GameStore>((set, get) => ({
           return;
         }
         get().playSnapshots([scrubbedSnap]);
+      },
+      // onChat：收到房间内其他玩家的快捷语音
+      (seat, voiceIndex) => {
+        get().handleRemoteChat(seat, voiceIndex);
       },
     );
     set({ wsConnected: true });

@@ -1,3 +1,4 @@
+import { DPH_THEME } from '@/config/dphTheme';
 // 牌桌桌布风格状态管理（对局中间桌布的颜色与图案）
 import { create } from 'zustand';
 
@@ -12,7 +13,9 @@ export interface TableStyle {
 }
 
 export const TABLE_STYLES: TableStyle[] = [
-  { id: 'classic', name: '经典翡翠', desc: '默认墨绿呢绒', background: null },
+  { id: 'dph', name: '庭院小憩', desc: '请休息吧', background: `linear-gradient(#34304d66, #34304d33), url("${DPH_THEME.background}") center / cover no-repeat` },
+  { id: 'grassland', name: '青青草原', desc: '晴空与暖阳下的草原', background: `linear-gradient(#202e4533, #172a3b55), url("${import.meta.env.BASE_URL}themes/grassland.png") center / cover no-repeat` },
+  { id: 'classic', name: '经典翡翠', desc: '墨绿呢绒', background: null },
   {
     id: 'midnight', name: '午夜蓝', desc: '深蓝牌桌',
     background: 'radial-gradient(ellipse at center, #14324f 0%, #0d1b2a 45%, #081220 100%)',
@@ -47,7 +50,7 @@ function getInitialStyle(): string {
     const saved = localStorage.getItem(KEY);
     if (saved && TABLE_STYLES.some((t) => t.id === saved)) return saved;
   } catch { /* ignore */ }
-  return 'classic';
+  return 'dph';
 }
 
 interface TableStyleStore {

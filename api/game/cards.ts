@@ -1,5 +1,5 @@
 // 卡牌定义与牌组生成
-import type { Card, Rank, Suit } from '@shared/types';
+import type { Card, GameMode, Rank, Suit } from '@shared/types';
 
 export const SUITS: Suit[] = ['spade', 'heart', 'club', 'diamond'];
 
@@ -34,7 +34,7 @@ export function createDeck(): Card[] {
 }
 
 // 洗牌（Fisher-Yates）
-export function shuffle(deck: Card[]): Card[] {
+export function shuffle<T>(deck: T[]): T[] {
   const arr = [...deck];
   for (let i = arr.length - 1; i > 0; i--) {
     const j = Math.floor(Math.random() * (i + 1));
@@ -137,6 +137,24 @@ export function dealUnshuffled(): { hands: Card[][]; bottom: Card[] } {
   for (const h of result!.hands) sortCards(h);
   sortCards(result!.bottom);
   return result!;
+}
+
+// 癞子不洗牌：仍按四张一包轮发，但增加簇间交换，不强制保留炸弹。
+// 步长越小，交换越多；4 介于完全洗牌与普通不洗牌（12）之间。
+export const LAIZI_UNSHUFFLE_STEP = 4;
+export function dealLaiziUnshuffled(): { hands: Card[][]; bottom: Card[] } {
+  const deck = partialShuffle(shuffleClusterOrder(buildClusteredDeck()), LAIZI_UNSHUFFLE_STEP);
+  const result = chunkDeal(deck, UNSHUFFLE_CHUNK);
+  for (const hand of result.hands) sortCards(hand);
+  sortCards(result.bottom);
+  return result;
+}
+
+/** 初次发牌、无人叫分重发共用入口，保证玩法不会在重发时退回普通洗牌。 */
+export function dealForMode(mode: GameMode): { hands: Card[][]; bottom: Card[] } {
+  if (mode === 'unshuffled') return dealUnshuffled();
+  if (mode === 'laizi_unshuffled') return dealLaiziUnshuffled();
+  return deal();
 }
 
 // 随机选取癞子点数（3~15，不含王牌）

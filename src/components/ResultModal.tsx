@@ -1,32 +1,22 @@
+import { dphAsset } from '@/config/dphTheme';
 // 游戏结算弹窗
 import { useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Trophy, Skull, Home, Crown, Sprout } from 'lucide-react';
+import { Trophy, Skull, Home, Crown, Sprout, RotateCw } from 'lucide-react';
 import type { GameState } from '@shared/types';
 import { useGameStore } from '@/store/gameStore';
 import { useThemeStore } from '@/store/themeStore';
 import { cn } from '@/lib/utils';
 import { sound } from '@/lib/soundManager';
-import { sortCardsDesc } from '@/lib/cards';
-import PlayingCard from './PlayingCard';
 
 interface ResultModalProps {
   state: GameState;
 }
 
-// 从状态推导当前生效的癞子点数列表（癞子/天地癞子模式）
-function laiziRanksOf(state: GameState): number[] {
-  if (state.laiziRank) return [state.laiziRank];
-  const ranks: number[] = [];
-  if (state.tianLaiziRank) ranks.push(state.tianLaiziRank);
-  if (state.diLaiziRank) ranks.push(state.diLaiziRank);
-  return ranks;
-}
-
 export default function ResultModal({ state }: ResultModalProps) {
   const navigate = useNavigate();
-  const { mySeat, online, exitOnline, quitGame } = useGameStore();
+  const { mySeat, online, exitOnline, quitGame, startGame } = useGameStore();
   const isLight = useThemeStore(s => s.theme === 'light');
 
   const isFinished = state.phase === 'finished' && !!state.result;
@@ -39,6 +29,11 @@ export default function ResultModal({ state }: ResultModalProps) {
   const handleExit = () => {
     if (online) { exitOnline(); navigate('/lobby'); }
     else { quitGame(); navigate('/'); }
+  };
+
+  // 再开一局（仅离线对局）：沿用当前模式与难度直接开新局
+  const handleRestart = () => {
+    startGame();
   };
 
   useEffect(() => {
@@ -66,7 +61,7 @@ export default function ResultModal({ state }: ResultModalProps) {
           animate={{ scale: 1, y: 0 }}
           transition={{ type: 'spring', duration: 0.5 }}
           className={cn(
-            'relative px-10 py-8 max-w-2xl w-full mx-4 text-center rounded-2xl border',
+            'relative px-10 py-8 max-w-2xl w-full mx-4 max-h-[90%] overflow-y-auto text-center rounded-2xl border',
             isLight ? (
               playerWon
                 ? 'bg-gradient-to-br from-green-50/95 via-emerald-50/95 to-green-100/95 border-green-300/50 shadow-xl'
@@ -85,6 +80,7 @@ export default function ResultModal({ state }: ResultModalProps) {
             borderColor: playerWon ? 'rgba(212,175,55,0.5)' : 'rgba(200,16,46,0.4)',
           } : undefined}
         >
+          <img className="dph-result-art" src={dphAsset(`result/${playerWon ? 'win' : 'lose'}.png`)} alt={playerWon ? '已经没有人可以阻挡我了！' : '可恶就差一点点！'} />
           {/* 胜负图标 */}
           <motion.div
             initial={{ scale: 0, rotate: -30 }}
@@ -164,67 +160,20 @@ export default function ResultModal({ state }: ResultModalProps) {
             </div>
           </div>
 
-          {/* 剩余手牌 */}
-          <div className={cn(
-            'rounded-xl p-4 mb-5 text-left',
-            isLight ? 'bg-white/60' : 'bg-ink-900/50',
-          )}>
-            <div className={cn(
-              'text-xs mb-2 font-main',
-              isLight ? 'text-amber-900/60' : 'text-ivory/60',
-            )}>
-              剩余手牌
-            </div>
-            <div className="space-y-3">
-              {state.players.map((p) => {
-                const hand = p.hand ? sortCardsDesc(p.hand, laiziRanksOf(state)) : [];
-                return (
-                  <div key={p.seat} className="flex items-start gap-3">
-                    {/* 玩家信息 */}
-                    <div className="w-24 shrink-0 pt-0.5">
-                      <div className={cn(
-                        'text-sm font-main truncate',
-                        isLight ? 'text-amber-900' : 'text-ivory',
-                      )}>
-                        {p.name}
-                      </div>
-                      <div className={cn(
-                        'text-xs flex items-center gap-1 mt-0.5',
-                        isLight ? 'text-amber-800/60' : 'text-ivory/50',
-                      )}>
-                        {p.role === 'landlord' ? (
-                          <><Crown className="w-3 h-3" />地主</>
-                        ) : (
-                          <><Sprout className="w-3 h-3" />农民</>
-                        )}
-                      </div>
-                    </div>
-                    {/* 手牌 */}
-                    <div className="flex-1 flex flex-wrap gap-1 items-start min-h-[68px]">
-                      {hand.length > 0 ? (
-                        hand.map((c) => (
-                          <PlayingCard key={c.id} card={c} size="sm" laiziRanks={laiziRanksOf(state)} />
-                        ))
-                      ) : (
-                        <span className={cn(
-                          'text-sm py-2',
-                          isLight ? 'text-amber-800/40' : 'text-ivory/30',
-                        )}>
-                          已出完
-                        </span>
-                      )}
-                    </div>
-                  </div>
-                );
-              })}
-            </div>
-          </div>
-
           {/* 操作按钮 */}
           <div className="flex gap-3 justify-center">
+            {!online && (
+              <button
+                onClick={handleRestart}
+                className="btn-gold"
+              >
+                <RotateCw className="w-5 h-5" />
+                再开一局
+              </button>
+            )}
             <button
               onClick={handleExit}
-              className="btn-gold"
+              className={online ? 'btn-gold' : 'btn-ghost'}
             >
               <Home className="w-5 h-5" />
               返回大厅

@@ -1,15 +1,22 @@
-// AI 决策引擎 —— 叫分与出牌策略（拟人化）
+// AI 决策入口：出牌与提示使用 aiStrategy，aiActions 生成模式对应的合法候选。
+// 下方旧启发式保留为可复现的升级前基准；叫分仍沿用原策略。
 // 权重体系与最优拆牌移植自宽立斗地主 AI（https://github.com/ZhouWeikuan/DouDiZhu）：
 //   - 牌型权重公式（厌恶度 bad → 权重 power）
 //   - p(hand) = max(牌型权重 + p(剩余手牌))，从最大面值提取 + 计数缓存
 //   - 出牌选择：让出牌后「牌型权重 + 剩余手牌权重」最大化
 // 并保留角色定位（农民配合/地主压制）、报单压制、炸弹时机、记牌器等拟人规则。
-import type { Card, Difficulty, Play, Role, Seat } from '@shared/types';
+// 高手难度额外接入 aiRollout（决策框架参考 rlcard-showdown-master / DouZero）：
+// 对候选动作做蒙特卡洛前瞻模拟，估计胜率后择优。
+import type { Card, Difficulty, GameMode, Play, Role, Seat } from '@shared/types';
 import { findBeatingPlays, findBeatingPlaysWithLaizi, type IdentifyOptions } from './rules';
 import { evaluateHand, estimateRounds } from './handAnalyzer';
 import { playPower, planHand, planGroupsToPlays } from './powerEvaluator';
+import { rolloutPick, type RolloutInfo } from './aiRollout';
+import { countByRank, groupByRank } from './cards';
+import { strategicPlay } from './aiStrategy';
 
 export interface AIContext {
+  mode?: GameMode;
   hand: Card[];
   seat: Seat;
   role: Role;
@@ -21,6 +28,7 @@ export interface AIContext {
   cardTracker: Map<number, number>; // rank -> 已出张数
   laiziRanks?: number[]; // 癞子点数列表（癞子/天地癞子模式）
   multiBomb?: boolean;   // 天地癞子模式：允许四张及以上同点数组成炸弹
+  passCount?: number;    // 当前连续 pass 数（决策者行动前，rollout 模拟需要）
 }
 
 export interface BidContext {
@@ -66,6 +74,106 @@ const BLUNDER_RATE: Record<Difficulty, number> = { casual: 0.25, standard: 0.08,
 
 // 癞子接牌惩罚：每使用一张癞子牌扣除的权重（慎用癞子，以最少癞子达成最优解）
 const LAIZI_PENALTY = 60;
+
+// ===== rollout 前瞻评估（高手难度，框架参考 DouZero：枚举候选 → 逐一评估价值）=====
+
+/** 由 AIContext 构造 rollout 所需的信息集（对应 DouZero 的 infoset） */
+function toRolloutInfo(ctx: AIContext): RolloutInfo {
+  // 未见牌池须分给「除自己外的两家」（含队友）——模拟器内部按 landlordSeat 区分敌我
+  const opponents = ctx.players
+    .filter((p) => p.seat !== ctx.seat)
+    .map((p) => ({ seat: p.seat, cardCount: p.cardCount }));
+  return {
+    hand: ctx.hand,
+    seat: ctx.seat,
+    landlordSeat: ctx.landlordSeat,
+    opponents,
+    cardTracker: ctx.cardTracker,
+    lastValidPlay: ctx.lastValidPlay,
+    lastPlaySeat: ctx.lastPlaySeat,
+    passCount: ctx.passCount ?? 0,
+  };
+}
+
+/** 带翼牌型集合 */
+const WINGED_TYPES = new Set([
+  'triple_single', 'triple_pair', 'airplane_single', 'airplane_pair',
+  'four_two_single', 'four_two_pair',
+]);
+
+/**
+ * 跟牌候选的翼牌重选（所有难度生效）。
+ * findBeatingPlays 生成带翼候选时只取「第一个可用 rank」做翼，容易拆散对子/三张
+ * （例如 555+66 会带一张 6 留下孤张）。此处参考宽立 pickWings 原则重选：
+ * 单翼优先落单牌、其次拆小对；对翼只取现成对子；均不拆三张与炸弹。
+ * 癞子组合（含癞子充当点数）不重选，避免破坏癞子牌型语义。
+ */
+function reWingPlay(play: Play, hand: Card[], laiziRanks?: number[]): Play {
+  if (!WINGED_TYPES.has(play.type)) return play;
+  if (laiziRanks && laiziRanks.length > 0 && play.cards.some((c) => laiziRanks.includes(c.rank))) {
+    return play;
+  }
+  let body: Array<[number, number]>;
+  let wingKind: 1 | 2;
+  let wingNeed: number;
+  if (play.type === 'triple_single') {
+    body = [[play.mainRank, 3]]; wingKind = 1; wingNeed = 1;
+  } else if (play.type === 'triple_pair') {
+    body = [[play.mainRank, 3]]; wingKind = 2; wingNeed = 1;
+  } else if (play.type === 'four_two_single') {
+    body = [[play.mainRank, 4]]; wingKind = 1; wingNeed = 2;
+  } else if (play.type === 'four_two_pair') {
+    body = [[play.mainRank, 4]]; wingKind = 2; wingNeed = 2;
+  } else {
+    // 飞机带翼：主体 = mainRank-length+1 .. mainRank 各 3 张
+    const lo = play.mainRank - play.length + 1;
+    body = [];
+    for (let r = lo; r <= play.mainRank; r++) body.push([r, 3]);
+    wingKind = play.type === 'airplane_single' ? 1 : 2;
+    wingNeed = play.length;
+  }
+  const counts = countByRank(hand);
+  for (const [r, n] of body) {
+    if ((counts.get(r) || 0) < n) return play; // 主体不全（不应发生），保持原样
+  }
+  const bodyRanks = new Set(body.map(([r]) => r));
+  const rest = new Map<number, number>();
+  for (const [r, c] of counts) {
+    const used = body.filter(([br]) => br === r).reduce((s, [, n]) => s + n, 0);
+    if (c - used > 0) rest.set(r, c - used);
+  }
+  const groups = groupByRank(hand);
+  const take = (r: number, n: number): Card[] => (groups.get(r) ?? []).slice(0, n);
+  const wings: Card[] = [];
+  if (wingKind === 1) {
+    // 单翼：先取落单（count===1），再拆对（count===2），不拆三张/炸弹；3~K 优先，2/王兜底
+    for (const [lo, hi] of [[3, 13], [14, 17]] as const) {
+      for (const pass of [1, 2] as const) {
+        for (const r of [...rest.keys()].sort((a, b) => a - b)) {
+          if (r < lo || r > hi || bodyRanks.has(r)) continue;
+          if (rest.get(r) === pass) wings.push(take(r, 1)[0]);
+          if (wings.length >= wingNeed) break;
+        }
+        if (wings.length >= wingNeed) break;
+      }
+      if (wings.length >= wingNeed) break;
+    }
+  } else {
+    // 对翼：只取现成对子（3~K 优先，A/2 兜底），不拆三张/炸弹
+    for (const [lo, hi] of [[3, 13], [14, 15]] as const) {
+      for (const r of [...rest.keys()].sort((a, b) => a - b)) {
+        if (r < lo || r > hi || bodyRanks.has(r)) continue;
+        if (rest.get(r)! >= 2) wings.push(...take(r, 2));
+        if (wings.length >= wingNeed * 2) break;
+      }
+      if (wings.length >= wingNeed * 2) break;
+    }
+  }
+  const needCards = wingKind === 1 ? wingNeed : wingNeed * 2;
+  if (wings.length !== needCards) return play; // 凑不齐更好的翼，保持原样
+  const bodyCards = body.flatMap(([r, n]) => take(r, n));
+  return { ...play, cards: [...bodyCards, ...wings] };
+}
 
 // ===== 记牌器工具（高手难度使用） =====
 
@@ -158,6 +266,12 @@ export function decideBid(ctx: BidContext): number {
  * AI 出牌决策。返回 Play（出牌）或 null（不出）
  */
 export function decidePlay(ctx: AIContext): Play | null {
+  if (ctx.hand.length === 0) return null;
+  return strategicPlay(ctx);
+}
+
+/** 升级前的规则策略，仅供基准脚本回归对照。 */
+export function decideHeuristicPlay(ctx: AIContext): Play | null {
   const { hand, lastValidPlay } = ctx;
 
   if (hand.length === 0) return null;
@@ -231,6 +345,12 @@ function decideLeading(ctx: AIContext): Play {
   // ===== 常规领出：出权重最低（最想脱手）的一组，控制牌留后 =====
   if (normals.length > 0) {
     const sorted = [...normals].sort((a, b) => playPower(a) - playPower(b) || a.mainRank - b.mainRank);
+    // 高手：对权重最低的几组做 rollout 前瞻，选模拟胜率最高的一手（DouZero 式逐动作评估）
+    if (difficulty === 'master' && sorted.length > 1) {
+      const cands = sorted.slice(0, Math.min(5, sorted.length));
+      const res = rolloutPick(toRolloutInfo(ctx), cands);
+      if (res && res.pick) return res.pick;
+    }
     // 拟人化：休闲从前3随机选，标准偶尔出次优
     if (difficulty === 'casual' && sorted.length > 1 && chance(0.3)) {
       return pick(sorted.slice(0, Math.min(3, sorted.length)));
@@ -254,10 +374,12 @@ function decideFollowing(ctx: AIContext): Play | null {
   if (!lastValidPlay || lastPlaySeat === null) return null;
 
   const opts: IdentifyOptions | undefined = multiBomb ? { multiBomb } : undefined;
-  const beats = laiziRanks && laiziRanks.length > 0
+  const rawBeats = laiziRanks && laiziRanks.length > 0
     ? findBeatingPlaysWithLaizi(hand, lastValidPlay, laiziRanks, opts)
     : findBeatingPlays(hand, lastValidPlay, opts);
-  if (beats.length === 0) return null; // 无法压过
+  if (rawBeats.length === 0) return null; // 无法压过
+  // 翼牌重选：避免带翼时拆散对子/三张/炸弹（癞子组合保持原样）
+  const beats = rawBeats.map((b) => reWingPlay(b, hand, laiziRanks));
 
   const lastIsTeammate = isTeammate(seat, lastPlaySeat, landlordSeat);
   const lastPlayerCards = players.find((p) => p.seat === lastPlaySeat)?.cardCount ?? 99;
@@ -284,6 +406,7 @@ function decideFollowing(ctx: AIContext): Play | null {
 
   // 拟人化选择：默认按整体权重最大化；preferBig 时直接出最大牌（对手报单场景）
   // 癞子模式下扣除「癞子使用惩罚」，优先用更少癞子牌达到最优解
+  // 高手难度：先用 rollout 前瞻模拟在 top 候选中择优（DouZero 式逐动作评估）
   const chooseHuman = (candidates: Play[], preferBig = false): Play => {
     const scored = candidates.map((p) => ({
       p,
@@ -295,6 +418,11 @@ function decideFollowing(ctx: AIContext): Play | null {
       return a.p.mainRank - b.p.mainRank;
     });
     if (scored.length === 1) return scored[0].p;
+    if (difficulty === 'master' && !preferBig) {
+      const top = scored.slice(0, Math.min(3, scored.length)).map((x) => x.p);
+      const res = rolloutPick(toRolloutInfo(ctx), top);
+      if (res && res.pick) return res.pick;
+    }
     // 休闲难度偶尔手滑乱选；标准偶尔出次优
     if (difficulty === 'casual' && chance(0.3)) {
       return pick(scored.slice(0, Math.min(3, scored.length))).p;
@@ -380,6 +508,18 @@ function decideFollowing(ctx: AIContext): Play | null {
   if (normalBeats.length > 0) {
     const smallest = sortByRank(normalBeats)[0];
 
+    // 高手：rollout 前瞻统一裁决「压哪手/是否忍」（对应 DouZero 的 legal_actions
+    // 同时含出牌与 pass，逐一评估后取价值最高者；pass 有安全边际，避免过度保守）
+    if (difficulty === 'master') {
+      const byScore = [...normalBeats].sort(
+        (a, b) => totalScore(hand, b) - totalScore(hand, a) || a.mainRank - b.mainRank,
+      );
+      const cands: Array<Play | null> = byScore.slice(0, Math.min(3, byScore.length));
+      cands.push(null);
+      const res = rolloutPick(toRolloutInfo(ctx), cands, { passMargin: 0.05 });
+      if (res) return res.pick;
+    }
+
     // 小牌（<A）：按权重出（宁可出大的也不拆散好牌型）
     if (smallest.mainRank < 14) return chooseHuman(normalBeats);
 
@@ -421,34 +561,13 @@ function decideFollowing(ctx: AIContext): Play | null {
  */
 export function getHint(hand: Card[], lastValidPlay: Play | null, laiziRanks?: number[], multiBomb?: boolean): Card[] | null {
   if (hand.length === 0) return null;
-
-  const opts: IdentifyOptions | undefined = multiBomb ? { multiBomb } : undefined;
-
-  // ===== 跟牌提示 =====
-  if (lastValidPlay) {
-    const beats = laiziRanks && laiziRanks.length > 0
-      ? findBeatingPlaysWithLaizi(hand, lastValidPlay, laiziRanks, opts)
-      : findBeatingPlays(hand, lastValidPlay, opts);
-    if (beats.length === 0) return null;
-    const normal = beats.filter((b) => !isBombPlay(b));
-    const pool = normal.length > 0 ? normal : beats;
-    const scored = pool.map((p) => ({ p, s: totalScore(hand, p) }));
-    scored.sort((a, b) => b.s - a.s || a.p.mainRank - b.p.mainRank);
-    return scored[0].p.cards;
-  }
-
-  // ===== 领出提示：最优拆牌方案中最想脱手的一组 =====
-  const plan = planHand(hand);
-  const groups = planGroupsToPlays(hand, plan.groups);
-  if (groups.length === 0) return null;
-  if (groups.length === 1) return groups[0].cards;
-
-  const normals = groups.filter((p) => !isBombPlay(p));
-  const pool = normals.length > 0 ? normals : groups;
-  // 残局（2组）：先出强的一手
-  if (groups.length <= 2) {
-    return pool.reduce((a, b) => (playPower(b) > playPower(a) ? b : a)).cards;
-  }
-  const sorted = [...pool].sort((a, b) => playPower(a) - playPower(b) || a.mainRank - b.mainRank);
-  return sorted[0].cards;
+  // 提示与标准 AI 共用拆牌评分；没有公开座位信息时不启用阵营战术或模拟。
+  const p = strategicPlay({
+    hand, seat: 0, role: 'landlord', landlordSeat: 0, difficulty: 'standard',
+    players: [{ seat: 0, role: 'landlord', cardCount: hand.length },
+      { seat: 1, role: 'peasant', cardCount: 20 }, { seat: 2, role: 'peasant', cardCount: 20 }],
+    cardTracker: new Map(), lastValidPlay, lastPlaySeat: lastValidPlay ? 1 : null,
+    laiziRanks, multiBomb,
+  }, false);
+  return p?.cards ?? null;
 }

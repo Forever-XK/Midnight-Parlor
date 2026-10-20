@@ -1,0 +1,103 @@
+[
+  {
+    "source": "myres2/lobby_bg/default.jpg",
+    "output": "backgrounds/courtyard.jpg",
+    "sha256": "f2852ad53ac40f975eb697e9a271ff99ae50f262c35affddc1b3db2b1e185a4c"
+  },
+  {
+    "source": "fonts/HYWenHei-85W.ttf",
+    "output": "fonts/HYWenHei-85W.ttf",
+    "sha256": "6c4f9aa137dd4bdc1fdce28f0b77ce7de4f6283f1cf5e744026e567ecf9fc3fa"
+  },
+  {
+    "source": "myres2/cardback/default/mid.png",
+    "output": "cards/back.png",
+    "sha256": "9f3634a34d5315a0f2379fd57857192b33ce638d63414a896dc3f4913733a766"
+  },
+  {
+    "source": "paihun-extendres/chs_t/illust/10002/head.png",
+    "output": "characters/10002-head.png",
+    "sha256": "10ef77ba3b62e02f9ad977771ced438f038c1d1fcbee7586fdd679cc5885a415"
+  },
+  {
+    "source": "paihun-extendres/chs_t/illust/10006/head.png",
+    "output": "characters/10006-head.png",
+    "sha256": "13157b55df37e3ad3e76c706662e9e04fbdbb63474d709c29824e200c3a7cc15"
+  },
+  {
+    "source": "paihun-extendres/chs_t/illust/10009/head.png",
+    "output": "characters/10009-head.png",
+    "sha256": "2b994a10ba51651f3236c73e68f3e3f534438b3130f67472cb4483885719178a"
+  },
+  {
+    "source": "paihun-extendres/chs_t/illust/10002/image.png",
+    "output": "characters/host.png",
+    "sha256": "74139874eeb84d50d60bcd3c89d266729d15754cdb5f831b262a04b7ef186027"
+  },
+  {
+    "source": "myres/result/win.png",
+    "output": "result/win.png",
+    "sha256": "c866d749687476df2a5ba52a7382b3d239814fa06fbee3202a0ae9b440607336"
+  },
+  {
+    "source": "myres/result/lose.png",
+    "output": "result/lose.png",
+    "sha256": "7218e0bdd04929f517377c950c910fc64f8a932d755573ca0566233c3174f393"
+  },
+  {
+    "source": "myres/result/103.png",
+    "output": "result/103.png",
+    "sha256": "6017e7c269c5f24eb0cf3b6ef094d5dbfae4e76f8d228f5959bf3d60f057f8c9"
+  },
+  {
+    "source": "myres/result/301.png",
+    "output": "result/301.png",
+    "sha256": "741461a5666cb86fa471e45fe6ca2d5d9b47bb4594813ec9a7f1e5cab99ae5b3"
+  },
+  {
+    "source": "myres/result/302.png",
+    "output": "result/302.png",
+    "sha256": "566bc7e67f70bb6250bdf198d0c0d499d699e04030d338c0678fb9888ea35eb6"
+  },
+  {
+    "source": "myres/result/307.png",
+    "output": "result/307.png",
+    "sha256": "391ee8f4e59985ac5e04ebae06a2815641f88c40be6408a74e2b3e86a1e01b4c"
+  },
+  {
+    "source": "myres/fight_begin/bg.png",
+    "output": "effects/vortex.png",
+    "sha256": "19e117acb292eef39f0c45472a100e89c27e59c19e3315fcd1ad9eff2a5b70a8"
+  },
+  {
+    "source": "scene/Assets/ShaderAtlasExport/SceneFx_skill_zhadan_000A/Fx_skill_zhadan_000A/Fx_hit_001.png",
+    "output": "effects/impact.png",
+    "sha256": "973ba6b8688219f829d6d64ec49749b799319564c6f94fb9b0208e6ab55ea6fb"
+  },
+  {
+    "source": "scene/Assets/ShaderAtlasExport/SceneFx_skill_zhadan_000A/Fx_skill_zhadan_000A/Fx_lizi_011.png",
+    "output": "effects/spark.png",
+    "sha256": "9bdaf13e0d2d90bdef4e1e9d64b16dc8de87254be6359047db30d1aea4787f3b"
+  },
+  {
+    "source": "scene/Assets/ShaderAtlasExport/SceneFx_skill_zhadan_000A/Fx_skill_zhadan_000A/Fx_txt_beilao.png",
+    "output": "effects/bomb-title.png",
+    "sha256": "f1e73fb0a0627644fda528f3172f1df3ad1bd898b9ecfa7c11d9e1212c8d44d7"
+  },
+  {
+    "source": "scene/Assets/ShaderAtlasExport/Scenefx_skill_huojian_000/fx_skill_huojian_000/fx_skill_huojian_00.png",
+    "output": "effects/flame.png",
+    "sha256": "a5ac3328ce1a7f6f705c3939c3785b1dcb8cfe4f842124158d81c5365e845f8e"
+  },
+  {
+    "source": "scene/Assets/ShaderAtlasExport/Scenefx_skill_huojian_000/fx_skill_huojian_000/fx_glow_001.png",
+    "output": "effects/glow.png",
+    "sha256": "df03eb085172417e70062497ae0631c92503c5deb31c79174d052ea27912beac"
+  },
+  {
+    "source": "myres2/card/default/big.png",
+    "output": "cards/{suit}-{rank}.png",
+    "sha256": "43b61396a39c4b1c467a427bb036c580bbaec661813a2289ea0754b5bd73eb9a",
+    "transform": "7x8 grid; 164x224; clubs, hearts, spades, diamonds; jokers at (6,3)/(6,1)"
+  }
+]
